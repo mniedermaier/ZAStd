@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZAStd Tower Defense</title>
+  <meta name="description" content="Cooperative maze-building tower defense. 8 governors, 35 towers, multiplayer mayhem.">
+  <meta property="og:title" content="ZAStd Tower Defense">
+  <meta property="og:description" content="Cooperative maze-building tower defense inspired by Burbenog TD">
+  <meta property="og:image" content="og-image.png">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="stars stars--small"></div>
+  <div class="stars stars--large"></div>
+
+  <header class="hero">
+    <h1 class="hero__title">ZAStd</h1>
+    <p class="hero__subtitle">Cooperative Maze-Building Tower Defense</p>
+    <p class="hero__tagline">8 governors. 35 towers. Endless mazes. Defend together.</p>
+    <div class="hero__buttons">
+      <a href="https://zastd.koyeb.app" class="btn btn--primary">Play Now</a>
+      <a href="https://github.com/mniedermaier/ZAStd" class="btn btn--secondary">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="features">
+      <h2 class="section-title">Features</h2>
+      <div class="features__grid">
+        <div class="feature">
+          <div class="feature__icon">&#x1f451;</div>
+          <h3>8 Governors</h3>
+          <p>Fire, Ice, Thunder, Poison, Death, Nature, Arcane, Holy &mdash; each with unique abilities and tower trees.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">&#x1f3f0;</div>
+          <h3>35 Towers</h3>
+          <p>3 common towers plus 4 per governor. Chain lightning, splash, poison, stun, execute, teleport, and aura buffs.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">&#x1f310;</div>
+          <h3>Multiplayer</h3>
+          <p>Real-time co-op via Supabase. Build mazes together, share lives, combine governor synergies.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">&#x1f9e9;</div>
+          <h3>Maze Building</h3>
+          <p>Place towers to create intricate mazes. BFS pathfinding ensures enemies always find a way &mdash; make it as long as possible.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">&#x1f47e;</div>
+          <h3>11 Enemy Types</h3>
+          <p>Armored, flying, healers, berserkers, splitters, and bosses every 10 waves. 40 waves to victory.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">&#x2694;&#xfe0f;</div>
+          <h3>Damage System</h3>
+          <p>Physical vs magic damage. Armor, magic resist, armor debuffs. Stack synergies for devastating combos.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">&#x1f4b0;</div>
+          <h3>Economy</h3>
+          <p>Earn gold per wave, gain interest, collect lumber every 5 waves. 5 tech upgrades to customize your strategy.</p>
+        </div>
+        <div class="feature">
+          <div class="feature__icon">&#x1f5fa;&#xfe0f;</div>
+          <h3>Multiple Maps</h3>
+          <p>3 sizes and 3 layouts: Classic, Spiral, and Crossroads. Easy, Normal, Hard, and Extreme difficulty.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="screenshots">
+      <h2 class="section-title">Screenshots</h2>
+      <div class="screenshots__grid">
+        <img src="screenshots/lobby.png" alt="Governor selection lobby" class="screenshot">
+        <img src="screenshots/gameplay-action.png" alt="Active gameplay with towers and enemies" class="screenshot">
+      </div>
+    </section>
+
+    <section class="tech">
+      <h2 class="section-title">Built With</h2>
+      <div class="tech__list">
+        <span class="tech__tag">TypeScript</span>
+        <span class="tech__tag">React 18</span>
+        <span class="tech__tag">Phaser 3</span>
+        <span class="tech__tag">Supabase</span>
+        <span class="tech__tag">Vite</span>
+        <span class="tech__tag">Docker</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>MIT License &middot; <a href="https://github.com/mniedermaier/ZAStd">mniedermaier/ZAStd</a></p>
+  </footer>
+</body>
+</html>

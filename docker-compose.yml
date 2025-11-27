@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8080:80"
+    # Optional: pass Supabase credentials for multiplayer
+    # args under build are used at image build time
+    # build:
+    #   context: .
+    #   args:
+    #     VITE_SUPABASE_URL: "https://your-project.supabase.co"
+    #     VITE_SUPABASE_ANON_KEY: "your-anon-key"

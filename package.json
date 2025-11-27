@@ -1,0 +1,16 @@
+{
+  "name": "zastd-web",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm -w @zastd/client run dev",
+    "build": "npm -w @zastd/engine run build && npm -w @zastd/client run build",
+    "test": "npm -w @zastd/engine test",
+    "preview": "npm -w @zastd/client run preview"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
