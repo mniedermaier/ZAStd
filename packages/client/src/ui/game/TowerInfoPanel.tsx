@@ -199,38 +199,42 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
     </div>
   ) : null;
 
-  return (
-    <div
-      className="tower-info-panel"
-      onTouchStart={isMobile ? handleTouchStart : undefined}
-      onTouchMove={isMobile ? handleTouchMove : undefined}
-      onTouchEnd={isMobile ? handleTouchEnd : undefined}
-      style={{
-        position: 'absolute',
-        ...(isMobile ? {
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)',
-          left: 0,
-          right: 0,
-          width: '100%',
-          borderRadius: '12px 12px 0 0',
-          maxHeight: '38vh',
-          display: 'flex',
-          flexDirection: 'column' as const,
-        } : {
-          bottom: 80,
-          right: 8,
-          width: 230,
-          borderRadius: 8,
-        }),
-        padding: 12,
-        background: 'rgba(10, 10, 26, 0.92)',
-        border: '1px solid #333366',
-        zIndex: 10,
-        fontSize: 12,
-      }}
-    >
-      {isMobile ? (
-        <>
+  if (isMobile) {
+    return (
+      <>
+        {/* Backdrop — tap to deselect */}
+        <div
+          onClick={() => selectTower(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.4)',
+            zIndex: 50,
+          }}
+        />
+
+        {/* Fixed drawer panel */}
+        <div
+          className="tower-info-panel"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            maxHeight: '50vh',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 12,
+            background: 'rgba(10, 10, 26, 0.95)',
+            borderTop: '1px solid #333366',
+            borderRadius: '12px 12px 0 0',
+            zIndex: 51,
+            fontSize: 12,
+          }}
+        >
           {/* Swipe indicator */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6, flexShrink: 0 }}>
             <div style={{ width: 32, height: 4, borderRadius: 2, background: '#555577' }} />
@@ -249,24 +253,40 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
           <div style={{ flexShrink: 0, paddingTop: 8, borderTop: '1px solid #333366' }}>
             {actionButtons}
           </div>
-        </>
-      ) : (
-        <>
-          {headerSection}
-          {statsSection}
-          {abilitiesSection}
-          {effectivenessSection}
-          {targetingSection}
-          {upgradePreviewSection}
-          {actionButtons}
-          <button
-            onClick={() => selectTower(null)}
-            style={{ width: '100%', marginTop: 6, fontSize: 11, color: '#8888aa' }}
-          >
-            Close
-          </button>
-        </>
-      )}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div
+      className="tower-info-panel"
+      style={{
+        position: 'absolute',
+        bottom: 80,
+        right: 8,
+        width: 230,
+        borderRadius: 8,
+        padding: 12,
+        background: 'rgba(10, 10, 26, 0.92)',
+        border: '1px solid #333366',
+        zIndex: 10,
+        fontSize: 12,
+      }}
+    >
+      {headerSection}
+      {statsSection}
+      {abilitiesSection}
+      {effectivenessSection}
+      {targetingSection}
+      {upgradePreviewSection}
+      {actionButtons}
+      <button
+        onClick={() => selectTower(null)}
+        style={{ width: '100%', marginTop: 6, fontSize: 11, color: '#8888aa' }}
+      >
+        Close
+      </button>
     </div>
   );
 }
