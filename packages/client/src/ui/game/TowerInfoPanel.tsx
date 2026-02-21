@@ -208,12 +208,12 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
       style={{
         position: 'absolute',
         ...(isMobile ? {
-          bottom: 'calc(max(8px, env(safe-area-inset-bottom, 0px)) + 96px)',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 140px)',
           left: 0,
           right: 0,
           width: '100%',
           borderRadius: '12px 12px 0 0',
-          maxHeight: '45vh',
+          maxHeight: '38vh',
           display: 'flex',
           flexDirection: 'column' as const,
         } : {
