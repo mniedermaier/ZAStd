@@ -208,7 +208,7 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
       style={{
         position: 'absolute',
         ...(isMobile ? {
-          bottom: 56,
+          bottom: 100,
           left: 0,
           right: 0,
           width: '100%',
