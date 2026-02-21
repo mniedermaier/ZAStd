@@ -4,6 +4,8 @@
 
 A cooperative maze-building tower defense game inspired by Burbenog TD. Build mazes, choose governors, and defend together.
 
+**[Play Now](https://zastd.koyeb.app/)** · **[Project Page](https://mniedermaier.github.io/ZAStd/)**
+
 ## Quick Start
 
 ```bash
