@@ -10,6 +10,17 @@ export interface PingData {
   time: number;
 }
 
+export interface PlacementProposal {
+  id: string;
+  playerId: string;
+  playerName: string;
+  x: number;
+  y: number;
+  towerType: string;
+  governorColor: string;
+  time: number;
+}
+
 interface UIStore {
   // Tower placement
   selectedTowerType: TowerType | null;
@@ -22,6 +33,9 @@ interface UIStore {
   // Pings
   pings: PingData[];
 
+  // Placement proposals (multiplayer)
+  proposals: PlacementProposal[];
+
   // Minimap pan target
   panTarget: { x: number; y: number } | null;
 
@@ -33,6 +47,8 @@ interface UIStore {
   cancelAbilityTargeting: () => void;
   addPing: (ping: PingData) => void;
   clearExpiredPings: () => void;
+  addProposal: (proposal: PlacementProposal) => void;
+  clearExpiredProposals: () => void;
   setPanTarget: (x: number, y: number) => void;
   clearPanTarget: () => void;
 }
@@ -43,6 +59,7 @@ export const useUIStore = create<UIStore>((set) => ({
   selectedTowerId: null,
   abilityTargeting: false,
   pings: [],
+  proposals: [],
   panTarget: null,
 
   startPlacement: (towerType) => set({
@@ -75,6 +92,12 @@ export const useUIStore = create<UIStore>((set) => ({
   })),
   clearExpiredPings: () => set((s) => ({
     pings: s.pings.filter((p) => Date.now() - p.time < 4000),
+  })),
+  addProposal: (proposal) => set((s) => ({
+    proposals: [...s.proposals, proposal].slice(-20),
+  })),
+  clearExpiredProposals: () => set((s) => ({
+    proposals: s.proposals.filter((p) => Date.now() - p.time < 10000),
   })),
   setPanTarget: (x, y) => set({ panTarget: { x, y } }),
   clearPanTarget: () => set({ panTarget: null }),

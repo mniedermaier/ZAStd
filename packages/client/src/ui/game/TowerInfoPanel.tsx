@@ -8,6 +8,8 @@ const TARGETING_MODES = [
   { value: 'last', label: 'Last', desc: 'Closest to spawn' },
   { value: 'closest', label: 'Close', desc: 'Nearest to tower' },
   { value: 'strongest', label: 'Strong', desc: 'Highest HP' },
+  { value: 'weakest', label: 'Weak', desc: 'Lowest HP' },
+  { value: 'most_hp_pct', label: 'Fresh', desc: 'Highest HP %' },
 ] as const;
 
 interface TowerInfoPanelProps {

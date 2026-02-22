@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useGameStore } from '../../stores/game-store';
-import { getWavePreview, ENEMY_DEFINITIONS, DIFFICULTY_MULTIPLIER_PER_WAVE, MUTATOR_DEFINITIONS } from '@zastd/engine';
+import { getWavePreview, ENEMY_DEFINITIONS, DIFFICULTY_MULTIPLIER_PER_WAVE, MUTATOR_DEFINITIONS, WAVE_BASE_INCOME, WAVE_INCOME_PER_WAVE, DIFFICULTY_SCALING } from '@zastd/engine';
 
 interface WaveInfoProps {
   onStartWave: () => void;
@@ -89,6 +89,15 @@ export function WaveInfo({ onStartWave }: WaveInfoProps) {
               Wave {nextWave} in {Math.ceil(snapshot.nextWaveCountdown)}s
             </div>
           )}
+          {(() => {
+            const ds = DIFFICULTY_SCALING[snapshot.settings.difficulty] ?? DIFFICULTY_SCALING.normal;
+            const income = Math.floor((WAVE_BASE_INCOME + nextWave * WAVE_INCOME_PER_WAVE) * ds.incomeMult);
+            return (
+              <div style={{ fontSize: 10, color: '#ffdd44', textAlign: 'center', marginBottom: 4 }}>
+                Wave {nextWave} income: +{income}g
+              </div>
+            );
+          })()}
           <button
             className="primary"
             onClick={onStartWave}

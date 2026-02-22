@@ -21,7 +21,9 @@ export type ClientAction =
   | { type: 'cancel_queue'; playerId: string; towerId: string }
   | { type: 'start_vote'; playerId: string; voteType: string; targetId?: string }
   | { type: 'cast_vote'; playerId: string; voteId: string }
-  | { type: 'set_targeting'; playerId: string; towerId: string; mode: string };
+  | { type: 'set_targeting'; playerId: string; towerId: string; mode: string }
+  | { type: 'propose_placement'; playerId: string; x: number; y: number; towerType: string }
+  | { type: 'join_game_request'; playerId: string; governor: string };
 
 // Messages from host -> all clients
 export type HostBroadcast =
@@ -29,7 +31,9 @@ export type HostBroadcast =
   | { type: 'lobby_state'; players: Record<string, any>; settings: any; phase: string }
   | { type: 'action_result'; success: boolean; action: string; playerId: string; message?: string }
   | { type: 'game_event'; event: any }
-  | { type: 'join_response'; targetPlayerId: string; accepted: boolean; reason?: string };
+  | { type: 'join_response'; targetPlayerId: string; accepted: boolean; reason?: string }
+  | { type: 'placement_proposal'; playerId: string; playerName: string; x: number; y: number; towerType: string; governorColor: string }
+  | { type: 'join_game_response'; targetPlayerId: string; accepted: boolean; reason?: string };
 
 // Presence payload
 export interface PresencePayload {

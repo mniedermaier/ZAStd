@@ -16,6 +16,8 @@ export type AppPhase =
   | 'game'
   | 'tutorial_lobby'
   | 'tutorial_game'
+  | 'weekly_lobby'
+  | 'weekly_game'
   | 'replay_viewer'
   | 'spectating';
 

@@ -51,8 +51,45 @@ interface GameContext {
 
 interface StatsStore extends LifetimeStats {
   leaderboard: LeaderboardEntry[];
+  governorMastery: Record<string, GovernorMasteryEntry>;
   recordGameEnd: (victory: boolean, stats: Record<string, { kills: number; damageDealt: number; towersPlaced: number; governor?: string | null }>, waveReached: number, playerId: string, gameContext?: GameContext) => void;
   fetchGlobalLeaderboard: (options?: { difficulty?: string }) => Promise<GlobalLeaderboardEntry[]>;
+}
+
+// ===== GOVERNOR MASTERY =====
+
+export interface GovernorMasteryEntry {
+  gamesPlayed: number;
+  gamesWon: number;
+  kills: number;
+}
+
+export const MASTERY_TIERS = [
+  { name: 'Novice',       minGames: 1,  color: '#8888aa' },
+  { name: 'Apprentice',   minGames: 3,  color: '#44bbff' },
+  { name: 'Adept',        minGames: 7,  color: '#44ff88' },
+  { name: 'Master',       minGames: 15, color: '#ffaa44' },
+  { name: 'Grandmaster',  minGames: 30, color: '#cc88ff' },
+] as const;
+
+export function getMasteryLevel(gamesPlayed: number): { name: string; color: string } | null {
+  let best: { name: string; color: string } | null = null;
+  for (const tier of MASTERY_TIERS) {
+    if (gamesPlayed >= tier.minGames) best = { name: tier.name, color: tier.color };
+  }
+  return best;
+}
+
+function loadGovernorMastery(): Record<string, GovernorMasteryEntry> {
+  try {
+    const raw = localStorage.getItem('zastd:governorMastery');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function saveGovernorMastery(mastery: Record<string, GovernorMasteryEntry>) {
+  try { localStorage.setItem('zastd:governorMastery', JSON.stringify(mastery)); } catch {}
 }
 
 // ===== PRESTIGE BADGES =====
@@ -156,6 +193,7 @@ async function submitScoreToGlobal(entry: LeaderboardEntry) {
 export const useStatsStore = create<StatsStore>((set, get) => ({
   ...loadStats(),
   leaderboard: loadLeaderboard(),
+  governorMastery: loadGovernorMastery(),
 
   recordGameEnd: (victory, stats, waveReached, playerId, gameContext) => {
     const playerStats = stats[playerId];
@@ -191,7 +229,20 @@ export const useStatsStore = create<StatsStore>((set, get) => ({
       .slice(0, MAX_LEADERBOARD);
     saveLeaderboard(lb);
 
-    set({ ...updated, leaderboard: lb });
+    // Update governor mastery
+    const governor = playerStats?.governor;
+    const mastery = { ...get().governorMastery };
+    if (governor) {
+      const prev = mastery[governor] ?? { gamesPlayed: 0, gamesWon: 0, kills: 0 };
+      mastery[governor] = {
+        gamesPlayed: prev.gamesPlayed + 1,
+        gamesWon: prev.gamesWon + (victory ? 1 : 0),
+        kills: prev.kills + (playerStats?.kills ?? 0),
+      };
+      saveGovernorMastery(mastery);
+    }
+
+    set({ ...updated, leaderboard: lb, governorMastery: mastery });
 
     // Fire-and-forget global submission
     submitScoreToGlobal(entry);

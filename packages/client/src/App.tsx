@@ -3,11 +3,12 @@ import {
   GameState, GameLoop, TowerType, GamePhase,
   getAvailableTowers, getRegularTowers, COMMON_TOWERS,
   WAVE_BASE_INCOME, WAVE_INCOME_PER_WAVE, DIFFICULTY_SCALING,
-  generateDailyChallenge, ReplayRecorder,
+  generateDailyChallenge, generateWeeklyChallenge, ReplayRecorder,
 } from '@zastd/engine';
 import type { ReplayData } from '@zastd/engine';
-import type { DailyChallengeConfig } from '@zastd/engine';
+import type { DailyChallengeConfig, WeeklyChallengeConfig } from '@zastd/engine';
 import type { TargetingMode } from '@zastd/engine';
+import { getMasteryLevel } from './stores/stats-store';
 import { useGameStore } from './stores/game-store';
 import { useLobbyStore } from './stores/lobby-store';
 import { useUIStore } from './stores/ui-store';
@@ -50,7 +51,7 @@ export function App() {
   const appPhase = useLobbyStore((s) => s.appPhase);
   const setAppPhase = useLobbyStore((s) => s.setAppPhase);
   const hasSupabase = isSupabaseConfigured();
-  const isGamePhase = appPhase === 'solo_game' || appPhase === 'game' || appPhase === 'daily_game' || appPhase === 'endless_game' || appPhase === 'tutorial_game' || appPhase === 'replay_viewer';
+  const isGamePhase = appPhase === 'solo_game' || appPhase === 'game' || appPhase === 'daily_game' || appPhase === 'endless_game' || appPhase === 'tutorial_game' || appPhase === 'weekly_game' || appPhase === 'replay_viewer';
 
   // Initialize audio on first interaction
   useEffect(() => { initAudio(); }, []);
@@ -126,6 +127,10 @@ export function App() {
     case 'tutorial_game':
       content = <TutorialMode />;
       break;
+    case 'weekly_lobby':
+    case 'weekly_game':
+      content = <WeeklyMode />;
+      break;
     case 'replay_viewer':
       content = <ReplayViewerMode />;
       break;
@@ -177,6 +182,7 @@ function MainMenuRouter() {
       onPlayDaily={() => setAppPhase('daily_lobby')}
       onPlayEndless={() => setAppPhase('endless_lobby')}
       onPlayTutorial={() => setAppPhase('tutorial_lobby')}
+      onPlayWeekly={() => setAppPhase('weekly_lobby')}
     />
   );
 }
@@ -536,6 +542,19 @@ function SoloMode() {
     }
   }, [gameState, setSnapshot]);
 
+  const handleRematch = useCallback(() => {
+    setGameOver(null);
+    stopRef.current?.();
+    gameLoopRef.current = null;
+    replayRecorderRef.current = null;
+    ultimateNotifiedRef.current = false;
+    setPrevWaveNumber(0);
+    gameState.resetGame();
+    gameState.addPlayer(SOLO_PLAYER_ID, playerName || 'Player');
+    setAppPhase('solo_lobby');
+    setSnapshot(gameState.serialize());
+  }, [gameState, setAppPhase, setSnapshot, playerName]);
+
   const handleGameOverClose = useCallback(() => {
     setGameOver(null);
     stopRef.current?.();
@@ -654,17 +673,24 @@ function SoloMode() {
         onCancelQueue={handleCancelQueue}
         isSolo
       />
-      {gameOver && (
-        <GameOverModal
-          victory={gameOver.victory}
-          stats={gameOver.stats}
-          onClose={handleGameOverClose}
-          waveReached={gameOver.waveReached}
-          livesRemaining={gameOver.livesRemaining}
-          difficulty={gameOver.difficulty}
-          replayData={gameOver.replayData}
-        />
-      )}
+      {gameOver && (() => {
+        const gov = Object.values(gameOver.stats)[0]?.governor;
+        const mastery = gov ? useStatsStore.getState().governorMastery[gov] : null;
+        const tier = mastery ? getMasteryLevel(mastery.gamesPlayed) : null;
+        return (
+          <GameOverModal
+            victory={gameOver.victory}
+            stats={gameOver.stats}
+            onClose={handleGameOverClose}
+            onRematch={handleRematch}
+            waveReached={gameOver.waveReached}
+            livesRemaining={gameOver.livesRemaining}
+            difficulty={gameOver.difficulty}
+            replayData={gameOver.replayData}
+            governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
+          />
+        );
+      })()}
     </>
   );
 }
@@ -877,6 +903,22 @@ function DailyMode() {
     }
   }, [gameState, setSnapshot]);
 
+  const handleRematch = useCallback(() => {
+    setGameOver(null);
+    stopRef.current?.();
+    gameLoopRef.current = null;
+    replayRecorderRef.current = null;
+    ultimateNotifiedRef.current = false;
+    setPrevWaveNumber(0);
+    gameState.resetGame();
+    gameState.updateSettings({ mapSize: dailyConfig.mapSize, mapLayout: dailyConfig.mapLayout, difficulty: dailyConfig.difficulty });
+    gameState.waveMutatorOverrides = dailyConfig.waveMutators;
+    gameState.addPlayer(SOLO_PLAYER_ID, playerName || 'Player');
+    gameState.selectGovernor(SOLO_PLAYER_ID, dailyConfig.featuredGovernor);
+    setAppPhase('daily_lobby');
+    setSnapshot(gameState.serialize());
+  }, [gameState, setAppPhase, setSnapshot, playerName, dailyConfig]);
+
   const handleGameOverClose = useCallback(() => {
     setGameOver(null);
     stopRef.current?.();
@@ -986,17 +1028,24 @@ function DailyMode() {
         onCancelQueue={handleCancelQueue}
         isSolo
       />
-      {gameOver && (
-        <GameOverModal
-          victory={gameOver.victory}
-          stats={gameOver.stats}
-          onClose={handleGameOverClose}
-          waveReached={gameOver.waveReached}
-          livesRemaining={gameOver.livesRemaining}
-          difficulty={gameOver.difficulty}
-          replayData={gameOver.replayData}
-        />
-      )}
+      {gameOver && (() => {
+        const gov = Object.values(gameOver.stats)[0]?.governor;
+        const mastery = gov ? useStatsStore.getState().governorMastery[gov] : null;
+        const tier = mastery ? getMasteryLevel(mastery.gamesPlayed) : null;
+        return (
+          <GameOverModal
+            victory={gameOver.victory}
+            stats={gameOver.stats}
+            onClose={handleGameOverClose}
+            onRematch={handleRematch}
+            waveReached={gameOver.waveReached}
+            livesRemaining={gameOver.livesRemaining}
+            difficulty={gameOver.difficulty}
+            replayData={gameOver.replayData}
+            governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
+          />
+        );
+      })()}
     </>
   );
 }
@@ -1219,6 +1268,20 @@ function EndlessMode() {
     }
   }, [gameState, setSnapshot]);
 
+  const handleRematch = useCallback(() => {
+    setGameOver(null);
+    stopRef.current?.();
+    gameLoopRef.current = null;
+    replayRecorderRef.current = null;
+    ultimateNotifiedRef.current = false;
+    setPrevWaveNumber(0);
+    gameState.resetGame();
+    gameState.endlessMode = true;
+    gameState.addPlayer(SOLO_PLAYER_ID, playerName || 'Player');
+    setAppPhase('endless_lobby');
+    setSnapshot(gameState.serialize());
+  }, [gameState, setAppPhase, setSnapshot, playerName]);
+
   const handleGameOverClose = useCallback(() => {
     setGameOver(null);
     stopRef.current?.();
@@ -1342,19 +1405,26 @@ function EndlessMode() {
         onCancelQueue={handleCancelQueue}
         isSolo
       />
-      {gameOver && (
-        <GameOverModal
-          victory={gameOver.victory}
-          stats={gameOver.stats}
-          onClose={handleGameOverClose}
-          waveReached={gameOver.waveReached}
-          livesRemaining={gameOver.livesRemaining}
-          difficulty={gameOver.difficulty}
-          endlessMode
-          scoreMultiplier={gameOver.scoreMultiplier}
-          replayData={gameOver.replayData}
-        />
-      )}
+      {gameOver && (() => {
+        const gov = Object.values(gameOver.stats)[0]?.governor;
+        const mastery = gov ? useStatsStore.getState().governorMastery[gov] : null;
+        const tier = mastery ? getMasteryLevel(mastery.gamesPlayed) : null;
+        return (
+          <GameOverModal
+            victory={gameOver.victory}
+            stats={gameOver.stats}
+            onClose={handleGameOverClose}
+            onRematch={handleRematch}
+            waveReached={gameOver.waveReached}
+            livesRemaining={gameOver.livesRemaining}
+            difficulty={gameOver.difficulty}
+            endlessMode
+            scoreMultiplier={gameOver.scoreMultiplier}
+            replayData={gameOver.replayData}
+            governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
+          />
+        );
+      })()}
     </>
   );
 }
@@ -1829,6 +1899,186 @@ function TutorialMode() {
           livesRemaining={gameOver.livesRemaining}
         />
       )}
+    </>
+  );
+}
+
+// --- Weekly Challenge Mode ---
+
+function WeeklyMode() {
+  const [weeklyConfig] = useState(() => generateWeeklyChallenge());
+  const [gameState] = useState(() => {
+    const gs = new GameState();
+    gs.updateSettings({
+      mapSize: weeklyConfig.mapSize,
+      mapLayout: weeklyConfig.mapLayout,
+      difficulty: weeklyConfig.difficulty,
+    });
+    gs.waveMutatorOverrides = weeklyConfig.waveMutators;
+    return gs;
+  });
+  const gameLoopRef = useRef<GameLoop | null>(null);
+  const stopRef = useRef<(() => void) | null>(null);
+  const replayRecorderRef = useRef<ReplayRecorder | null>(null);
+  const setSnapshot = useGameStore((s) => s.setSnapshot);
+  const appPhase = useLobbyStore((s) => s.appPhase);
+  const setAppPhase = useLobbyStore((s) => s.setAppPhase);
+  const playerName = useLobbyStore((s) => s.playerName);
+  const cancelPlacement = useUIStore((s) => s.cancelPlacement);
+  const togglePause = useSettingsStore((s) => s.togglePause);
+  const setShowHelp = useSettingsStore((s) => s.setShowHelp);
+  const setIsPaused = useSettingsStore((s) => s.setIsPaused);
+  const recordGameEnd = useStatsStore((s) => s.recordGameEnd);
+  const inGame = appPhase === 'weekly_game';
+
+  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; replayData?: ReplayData | null } | null>(null);
+  const [prevWaveNumber, setPrevWaveNumber] = useState(0);
+  const ultimateNotifiedRef = useRef(false);
+
+  useEffect(() => {
+    gameState.addPlayer(SOLO_PLAYER_ID, playerName || 'Player');
+    setSnapshot(gameState.serialize());
+  }, []);
+
+  useEffect(() => {
+    if (gameLoopRef.current) gameLoopRef.current.setSpeed(useSettingsStore.getState().gameSpeed);
+    return useSettingsStore.subscribe((s) => { if (gameLoopRef.current) gameLoopRef.current.setSpeed(s.gameSpeed); });
+  }, [inGame]);
+
+  useEffect(() => {
+    if (!inGame) return;
+    const interval = setInterval(() => {
+      const snap = gameState.serialize();
+      setSnapshot(snap);
+      if (snap.waveNumber > prevWaveNumber && prevWaveNumber > 0) {
+        playWaveComplete();
+        const ds = DIFFICULTY_SCALING[snap.settings.difficulty] ?? DIFFICULTY_SCALING.normal;
+        const income = Math.floor((WAVE_BASE_INCOME + prevWaveNumber * WAVE_INCOME_PER_WAVE) * ds.incomeMult);
+        useToastStore.getState().addToast(`Wave ${prevWaveNumber} complete! +${income}g`, 'success', 3000);
+      }
+      setPrevWaveNumber(snap.waveNumber);
+      const player = snap.players[SOLO_PLAYER_ID];
+      if (player?.ultimateUnlocked && !ultimateNotifiedRef.current) {
+        ultimateNotifiedRef.current = true;
+        useToastStore.getState().addToast('Ultimate Tower unlocked!', 'warning', 5000);
+      }
+      if (gameLoopRef.current) {
+        for (const ev of gameLoopRef.current.drainEvents()) {
+          if (ev.type === 'game_over') {
+            const victory = ev.victory as boolean;
+            if (victory) playVictory(); else playDefeat();
+            const gameCtx = { difficulty: snap.settings.difficulty, mapSize: snap.settings.mapSize, playerCount: 1, gameSpeed: useSettingsStore.getState().gameSpeed, modifierCount: gameState.activeModifiers.length };
+            recordGameEnd(victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx);
+            setGameOver({ victory, stats: ev.stats as any, waveReached: snap.waveNumber, livesRemaining: snap.sharedLives, difficulty: snap.settings.difficulty, replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null });
+          }
+          if (ev.type === 'game_reset') { stopRef.current?.(); gameLoopRef.current = null; replayRecorderRef.current = null; setGameOver(null); setAppPhase('weekly_lobby'); }
+        }
+      }
+    }, 50);
+    return () => clearInterval(interval);
+  }, [inGame, gameState, setSnapshot, prevWaveNumber]);
+
+  useEffect(() => { const p = gameState.players.get(SOLO_PLAYER_ID); if (p) p.name = playerName || 'Player'; }, [playerName, gameState]);
+
+  const handleSelectGovernor = useCallback((element: string) => { gameState.selectGovernor(SOLO_PLAYER_ID, element); setSnapshot(gameState.serialize()); }, [gameState, setSnapshot]);
+  const handleReady = useCallback(() => { const p = gameState.players.get(SOLO_PLAYER_ID); if (p) { gameState.setPlayerReady(SOLO_PLAYER_ID, !p.ready); setSnapshot(gameState.serialize()); } }, [gameState, setSnapshot]);
+
+  const handleStartGame = useCallback(() => {
+    gameState.activeModifiers = weeklyConfig.modifiers;
+    gameState.applyModifiers();
+    gameState.startGame();
+    const loop = new GameLoop(gameState);
+    const recorder = new ReplayRecorder();
+    loop.replayRecorder = recorder;
+    replayRecorderRef.current = recorder;
+    gameLoopRef.current = loop;
+    stopRef.current = loop.start();
+    setAppPhase('weekly_game');
+    setSnapshot(gameState.serialize());
+  }, [gameState, setAppPhase, setSnapshot, weeklyConfig]);
+
+  const handlePlaceTower = useCallback((data: { x: number; y: number; towerType: string }) => {
+    const [canPlace, reason] = gameState.canPlaceTower(SOLO_PLAYER_ID, data.x, data.y, data.towerType as TowerType);
+    if (!canPlace) { useToastStore.getState().addToast(reason, 'error', 2000); return; }
+    const result = gameState.placeTower(SOLO_PLAYER_ID, data.x, data.y, data.towerType as TowerType);
+    if (result) { playPlaceTower(); haptic(15); cancelPlacement(); setSnapshot(gameState.serialize()); }
+  }, [gameState, setSnapshot, cancelPlacement]);
+
+  const handleUpgradeTower = useCallback((towerId: string) => { gameState.upgradeTower(SOLO_PLAYER_ID, towerId); playUpgradeTower(); haptic([10, 30, 10]); setSnapshot(gameState.serialize()); }, [gameState, setSnapshot]);
+  const handleSellTower = useCallback((towerId: string) => { if (!gameState.sellTower(SOLO_PLAYER_ID, towerId)) { useToastStore.getState().addToast('Cannot sell yet (cooldown)', 'warning', 1500); return; } playSellTower(); haptic(25); setSnapshot(gameState.serialize()); }, [gameState, setSnapshot]);
+  const handleSetTargeting = useCallback((towerId: string, mode: string) => { gameState.setTowerTargeting(SOLO_PLAYER_ID, towerId, mode as TargetingMode); setSnapshot(gameState.serialize()); }, [gameState, setSnapshot]);
+  const handleStartWave = useCallback(() => { if (gameState.canManuallyStartWave()) { gameState.lastManualWaveStartTime = Date.now() / 1000; gameState.startNextWave(); playWaveStart(); setSnapshot(gameState.serialize()); } }, [gameState, setSnapshot]);
+  const handleBuyTech = useCallback((techId: string) => { const p = gameState.players.get(SOLO_PLAYER_ID); if (p?.buyTech(techId)) { playUIClick(); setSnapshot(gameState.serialize()); } else { useToastStore.getState().addToast('Not enough lumber or already maxed', 'warning', 2000); } }, [gameState, setSnapshot]);
+  const handleUseAbility = useCallback((targetX?: number, targetY?: number) => { if (gameState.useAbility(SOLO_PLAYER_ID, targetX, targetY)) { haptic([15, 30, 15]); setSnapshot(gameState.serialize()); } else { useToastStore.getState().addToast('Ability not ready', 'warning', 1500); } }, [gameState, setSnapshot]);
+
+  const handleRematch = useCallback(() => {
+    setGameOver(null); stopRef.current?.(); gameLoopRef.current = null; replayRecorderRef.current = null;
+    ultimateNotifiedRef.current = false; setPrevWaveNumber(0);
+    gameState.resetGame();
+    gameState.updateSettings({ mapSize: weeklyConfig.mapSize, mapLayout: weeklyConfig.mapLayout, difficulty: weeklyConfig.difficulty });
+    gameState.waveMutatorOverrides = weeklyConfig.waveMutators;
+    gameState.addPlayer(SOLO_PLAYER_ID, playerName || 'Player');
+    setAppPhase('weekly_lobby'); setSnapshot(gameState.serialize());
+  }, [gameState, setAppPhase, setSnapshot, playerName, weeklyConfig]);
+
+  const handleGameOverClose = useCallback(() => { setGameOver(null); stopRef.current?.(); gameLoopRef.current = null; replayRecorderRef.current = null; setAppPhase('main_menu'); }, [setAppPhase]);
+  const handleQuit = useCallback(() => { setIsPaused(false); stopRef.current?.(); gameLoopRef.current = null; replayRecorderRef.current = null; setAppPhase('main_menu'); }, [setAppPhase, setIsPaused]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'Escape') { if (useSettingsStore.getState().showHelp) setShowHelp(false); else if (inGame) togglePause(); else cancelPlacement(); }
+      if (e.key === 'h' || e.key === 'H') { if (inGame) setShowHelp(!useSettingsStore.getState().showHelp); }
+      if (useSettingsStore.getState().isPaused || useSettingsStore.getState().showHelp) return;
+      if (e.key === ' ' && inGame) { e.preventDefault(); handleStartWave(); }
+      if (e.key === 'q' && inGame) { const sel = useUIStore.getState().selectedTowerId; if (sel) handleUpgradeTower(sel); }
+      if (e.key === 'e' && inGame) { const sel = useUIStore.getState().selectedTowerId; if (sel) { handleSellTower(sel); useUIStore.getState().selectTower(null); } }
+      if (inGame && e.key >= '1' && e.key <= '9') {
+        const p = gameState.players.get(SOLO_PLAYER_ID); if (!p) return;
+        const available = p.governor ? (p.ultimateUnlocked ? getAvailableTowers(p.governor) : getRegularTowers(p.governor)) : [...COMMON_TOWERS];
+        const idx = parseInt(e.key) - 1; if (idx < available.length) useUIStore.getState().startPlacement(available[idx] as TowerType);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [cancelPlacement, inGame, handleStartWave, handleUpgradeTower, handleSellTower, gameState, togglePause, setShowHelp]);
+
+  const snapshot = useGameStore((s) => s.snapshot);
+  if (!inGame) {
+    const players: Record<string, { name: string; governor: string | null; ready: boolean }> = {};
+    if (snapshot) { for (const [pid, p] of Object.entries(snapshot.players)) { players[pid] = { name: p.name, governor: p.governor, ready: p.ready }; } }
+    return (
+      <LobbyPage
+        playerId={SOLO_PLAYER_ID} players={players}
+        onSelectGovernor={handleSelectGovernor} onReady={handleReady} onStartGame={handleStartGame}
+        onUpdateSettings={() => {}}
+        settings={snapshot?.settings ?? { mapSize: weeklyConfig.mapSize, mapLayout: weeklyConfig.mapLayout, difficulty: weeklyConfig.difficulty, moneySharing: false }}
+        allReady={gameState.allPlayersReady()} isHost={false}
+        onLeave={() => setAppPhase('main_menu')}
+        dailyInfo={{ dateString: weeklyConfig.weekString, featuredGovernor: weeklyConfig.featuredGovernor }}
+      />
+    );
+  }
+
+  return (
+    <>
+      <GamePage
+        playerId={SOLO_PLAYER_ID} onPlaceTower={handlePlaceTower} onUpgradeTower={handleUpgradeTower}
+        onSellTower={handleSellTower} onSetTargeting={handleSetTargeting} onStartWave={handleStartWave}
+        onBuyTech={handleBuyTech} onUseAbility={handleUseAbility} onQuit={handleQuit} isSolo
+      />
+      {gameOver && (() => {
+        const gov = Object.values(gameOver.stats)[0]?.governor;
+        const mastery = gov ? useStatsStore.getState().governorMastery[gov] : null;
+        const tier = mastery ? getMasteryLevel(mastery.gamesPlayed) : null;
+        return (
+          <GameOverModal victory={gameOver.victory} stats={gameOver.stats} onClose={handleGameOverClose} onRematch={handleRematch}
+            waveReached={gameOver.waveReached} livesRemaining={gameOver.livesRemaining} difficulty={gameOver.difficulty}
+            replayData={gameOver.replayData}
+            governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
+          />
+        );
+      })()}
     </>
   );
 }

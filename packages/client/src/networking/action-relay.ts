@@ -101,10 +101,16 @@ export function processAction(gameState: GameState, action: ClientAction): { suc
       return { success: true };
     }
 
+    case 'join_game_request': {
+      const player = gameState.addPlayerMidGame(action.playerId, action.playerId, action.governor);
+      return player ? { success: true } : { success: false, message: 'Game is full' };
+    }
+
     case 'chat':
     case 'join_request':
     case 'spectate_request':
     case 'ping':
+    case 'propose_placement':
       // Handled separately by room-manager, not via action-relay
       return { success: true };
 

@@ -2,7 +2,7 @@
 export type DamageType = 'physical' | 'magic';
 
 // Tower targeting modes
-export type TargetingMode = 'first' | 'last' | 'closest' | 'strongest';
+export type TargetingMode = 'first' | 'last' | 'closest' | 'strongest' | 'weakest' | 'most_hp_pct';
 
 // Game phases
 export enum GamePhase {
@@ -249,6 +249,7 @@ export interface GameStateSnapshot {
     moneySharing: boolean;
   };
   endlessMode?: boolean;
+  adaptiveScaling?: number;
   activeModifiers?: string[];
   scoreMultiplier?: number;
   upgradeQueue?: Array<{ playerId: string; towerId: string; targetLevel: number }>;

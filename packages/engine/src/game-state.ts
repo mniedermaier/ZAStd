@@ -32,6 +32,7 @@ export class GameState {
   difficulty = 'normal';
   moneySharing = true;
   endlessMode = false;
+  adaptiveScaling = 1.0;
   activeModifiers: string[] = [];
   isTutorial = false;
   upgradeQueue: Array<{ playerId: string; towerId: string; targetLevel: number }> = [];
@@ -452,6 +453,13 @@ export class GameState {
     const ds = this.difficultyScaling;
     const enemy = createEnemy(enemyTypeToSpawn, enemyId, spawnX, spawnY, this.waveNumber, this.pathVersion, ds.healthMult, ds.speedMult);
 
+    // Apply adaptive scaling (multiplayer)
+    if (this.adaptiveScaling !== 1.0) {
+      const newHp = Math.floor(enemy.stats.maxHealth * this.adaptiveScaling);
+      enemy.stats = { ...enemy.stats, maxHealth: newHp };
+      enemy.currentHealth = newHp;
+    }
+
     // Apply wave mutator effects to spawned enemy
     const mutators = this.currentWave.properties?.mutators;
     if (mutators) {
@@ -657,6 +665,33 @@ export class GameState {
     return results;
   }
 
+  // --- Adaptive Difficulty (multiplayer) ---
+  updateAdaptiveScaling(): void {
+    if (this.players.size <= 1) {
+      this.adaptiveScaling = 1.0;
+      return;
+    }
+    const livePct = this.sharedLives / STARTING_LIVES;
+    if (livePct > 0.8) {
+      this.adaptiveScaling = 1.15;
+    } else if (livePct < 0.4) {
+      this.adaptiveScaling = 0.85;
+    } else {
+      this.adaptiveScaling = 1.0;
+    }
+  }
+
+  // --- Mid-Game Join (spectator -> player) ---
+  addPlayerMidGame(playerId: string, playerName: string, governor: string): Player | null {
+    const player = this.addPlayer(playerId, playerName);
+    if (!player) return null;
+    const ds = this.difficultyScaling;
+    player.money = Math.floor(STARTING_MONEY * ds.startingMoneyMult + this.waveNumber * 15);
+    player.governor = governor;
+    player.recalculateBonuses();
+    return player;
+  }
+
   resetGame(): void {
     this.phase = GamePhase.Lobby;
     this.waveNumber = 0;
@@ -666,6 +701,7 @@ export class GameState {
     this.sharedLives = STARTING_LIVES;
     this.endlessMode = false;
     this.isTutorial = false;
+    this.adaptiveScaling = 1.0;
     this.activeModifiers = [];
     this.upgradeQueue = [];
     this.activeVotes.clear();
@@ -738,6 +774,7 @@ export class GameState {
         moneySharing: this.moneySharing,
       },
       endlessMode: this.endlessMode,
+      adaptiveScaling: this.adaptiveScaling !== 1.0 ? this.adaptiveScaling : undefined,
       activeModifiers: this.activeModifiers,
       scoreMultiplier: this.scoreMultiplier,
       upgradeQueue: this.upgradeQueue.length > 0 ? [...this.upgradeQueue] : undefined,

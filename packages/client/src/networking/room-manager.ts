@@ -503,6 +503,24 @@ export class RoomManager {
     });
   }
 
+  proposePlacement(x: number, y: number, towerType: string): void {
+    this._dispatchAction({
+      type: 'propose_placement',
+      playerId: this.playerId,
+      x,
+      y,
+      towerType,
+    });
+  }
+
+  requestJoinGame(governor: string): void {
+    this._dispatchAction({
+      type: 'join_game_request',
+      playerId: this.playerId,
+      governor,
+    });
+  }
+
   // --- Cleanup ---
 
   async leaveRoom(): Promise<void> {
@@ -617,6 +635,31 @@ export class RoomManager {
             time: Date.now(),
           });
         }
+      } else if (msg.type === 'placement_proposal') {
+        const proposal = msg as any;
+        if (proposal.playerId !== this.playerId) {
+          const { useUIStore } = require('../stores/ui-store');
+          useUIStore.getState().addProposal({
+            id: `${proposal.playerId}-${Date.now()}`,
+            playerId: proposal.playerId,
+            playerName: proposal.playerName,
+            x: proposal.x,
+            y: proposal.y,
+            towerType: proposal.towerType,
+            governorColor: proposal.governorColor,
+            time: Date.now(),
+          });
+        }
+      } else if (msg.type === 'join_game_response') {
+        const resp = msg as any;
+        if (resp.targetPlayerId === this.playerId) {
+          if (resp.accepted) {
+            useLobbyStore.getState().setSpectating(false);
+            useToastStore.getState().addToast('Joined the game!', 'success', 3000);
+          } else {
+            useToastStore.getState().addToast(resp.reason || 'Cannot join', 'error', 3000);
+          }
+        }
       } else if (msg.type === 'action_result') {
         const broadcast = msg as Extract<HostBroadcast, { type: 'action_result' }>;
         if (!broadcast.success && broadcast.playerId === this.playerId) {
@@ -647,6 +690,34 @@ export class RoomManager {
         type: 'game_event',
         event: { type: 'ping', ...pingData },
       });
+      return;
+    }
+
+    if (action.type === 'propose_placement') {
+      // Relay proposal to all clients
+      const player = this.gameState.players.get(action.playerId);
+      const { GOVERNORS } = require('@zastd/engine');
+      const gov = player?.governor ? GOVERNORS[player.governor] : null;
+      this.realtime?.broadcastState({
+        type: 'placement_proposal',
+        playerId: action.playerId,
+        playerName: player?.name ?? 'Unknown',
+        x: action.x,
+        y: action.y,
+        towerType: action.towerType,
+        governorColor: gov?.color ?? '#44bbff',
+      } as any);
+      return;
+    }
+
+    if (action.type === 'join_game_request') {
+      const player = this.gameState.addPlayerMidGame(action.playerId, action.playerId, action.governor);
+      this.realtime?.broadcastState({
+        type: 'join_game_response',
+        targetPlayerId: action.playerId,
+        accepted: !!player,
+        reason: player ? undefined : 'Game is full',
+      } as any);
       return;
     }
 

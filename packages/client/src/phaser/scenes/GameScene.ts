@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { GameStateSnapshot, TowerSnapshot, EnemySnapshot, ProjectileSnapshot } from '@zastd/engine';
-import { TOWER_DEFINITIONS, TowerType, GOVERNORS, ABILITY_DEFINITIONS } from '@zastd/engine';
+import { TOWER_DEFINITIONS, TowerType, GOVERNORS, ABILITY_DEFINITIONS, OccupancyGrid } from '@zastd/engine';
 import { useGameStore } from '../../stores/game-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useSettingsStore } from '../../stores/settings-store';
@@ -110,6 +110,11 @@ export class GameScene extends Phaser.Scene {
   private lastSnapshot: GameStateSnapshot | null = null;
   private cameraControls = { dragging: false, lastX: 0, lastY: 0 };
   private pinchState = { active: false, prevDist: 0, prevMidX: 0, prevMidY: 0 };
+
+  // Path preview for tower placement
+  private _lastPreviewCellX = -1;
+  private _lastPreviewCellY = -1;
+  private _previewPathCells: number[][] | null = null;
 
   // Enemy interpolation
   private enemyPrevPos = new Map<string, { x: number; y: number; time: number }>();
@@ -2298,6 +2303,47 @@ export class GameScene extends Phaser.Scene {
         cellY * CELL_SIZE + CELL_SIZE / 2,
         stats.range * CELL_SIZE,
       );
+    }
+
+    // Path preview: show how enemy path changes with this tower placement
+    if (!blocked && inBounds && (cellX !== this._lastPreviewCellX || cellY !== this._lastPreviewCellY)) {
+      this._lastPreviewCellX = cellX;
+      this._lastPreviewCellY = cellY;
+      try {
+        const spawn: [number, number] = [snapshot.map.spawn[0], snapshot.map.spawn[1]];
+        const end: [number, number] = [snapshot.map.end[0], snapshot.map.end[1]];
+        const waypoints: [number, number][] = snapshot.map.checkpoints.map(([x, y]) => [x, y] as [number, number]);
+        const grid = new OccupancyGrid(snapshot.map.width, snapshot.map.height, spawn, end, waypoints);
+        // Block existing towers
+        for (const ts of Object.values(snapshot.towers)) grid.placeTower(ts.x, ts.y);
+        // Block ghost cell
+        if (grid.canPlace(cellX, cellY)) {
+          grid.placeTower(cellX, cellY);
+          this._previewPathCells = grid.getPathCells().map(([x, y]) => [x, y]);
+        } else {
+          this._previewPathCells = null;
+        }
+      } catch {
+        this._previewPathCells = null;
+      }
+    }
+    if (blocked || !inBounds) {
+      this._lastPreviewCellX = -1;
+      this._lastPreviewCellY = -1;
+      this._previewPathCells = null;
+    }
+
+    // Draw preview path
+    if (this._previewPathCells && this._previewPathCells.length > 1) {
+      this.ghostGraphics.lineStyle(2, 0xffdd44, 0.5);
+      this.ghostGraphics.beginPath();
+      const [fx, fy] = this._previewPathCells[0];
+      this.ghostGraphics.moveTo(fx * CELL_SIZE + CELL_SIZE / 2, fy * CELL_SIZE + CELL_SIZE / 2);
+      for (let i = 1; i < this._previewPathCells.length; i++) {
+        const [px, py] = this._previewPathCells[i];
+        this.ghostGraphics.lineTo(px * CELL_SIZE + CELL_SIZE / 2, py * CELL_SIZE + CELL_SIZE / 2);
+      }
+      this.ghostGraphics.strokePath();
     }
   }
 

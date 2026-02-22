@@ -508,6 +508,12 @@ export class GameLoop {
         case 'strongest':
           score = enemy.currentHealth;
           break;
+        case 'weakest':
+          score = -enemy.currentHealth;
+          break;
+        case 'most_hp_pct':
+          score = enemy.currentHealth / enemy.stats.maxHealth;
+          break;
         case 'first':
         default:
           score = enemy.pathIndex;
@@ -709,6 +715,7 @@ export class GameLoop {
       if (shouldAwardLumber(waveNum)) player.addLumber(getLumberAward());
     }
 
+    this.gameState.updateAdaptiveScaling();
     this.gameState.phase = GamePhase.WaveComplete;
     this.gameState.currentWave = null;
 

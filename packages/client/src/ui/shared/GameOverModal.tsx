@@ -8,6 +8,7 @@ interface GameOverModalProps {
   victory: boolean;
   stats: Record<string, { name: string; kills: number; damageDealt: number; towersPlaced: number; governor: string | null }>;
   onClose: () => void;
+  onRematch?: () => void;
   waveReached?: number;
   livesRemaining?: number;
   difficulty?: string;
@@ -15,9 +16,10 @@ interface GameOverModalProps {
   scoreMultiplier?: number;
   newBadges?: Badge[];
   replayData?: ReplayData | null;
+  governorMasteryInfo?: { tierName: string; tierColor: string; gamesPlayed: number; gamesWon: number } | null;
 }
 
-export function GameOverModal({ victory, stats, onClose, waveReached, livesRemaining, difficulty, endlessMode, scoreMultiplier, newBadges, replayData }: GameOverModalProps) {
+export function GameOverModal({ victory, stats, onClose, onRematch, waveReached, livesRemaining, difficulty, endlessMode, scoreMultiplier, newBadges, replayData, governorMasteryInfo }: GameOverModalProps) {
   const entries = Object.values(stats).sort((a, b) => b.kills - a.kills);
   const [shareLabel, setShareLabel] = useState('Share');
   const [replaySaved, setReplaySaved] = useState(false);
@@ -159,6 +161,21 @@ export function GameOverModal({ victory, stats, onClose, waveReached, livesRemai
           </div>
         )}
 
+        {governorMasteryInfo && (
+          <div style={{
+            marginTop: 10,
+            padding: '6px 12px',
+            background: 'rgba(68, 187, 255, 0.06)',
+            border: '1px solid #333366',
+            borderRadius: 6,
+            textAlign: 'center',
+            fontSize: 12,
+          }}>
+            <span style={{ color: governorMasteryInfo.tierColor, fontWeight: 700 }}>{governorMasteryInfo.tierName}</span>
+            <span style={{ color: '#8888aa' }}> &mdash; {governorMasteryInfo.gamesWon}W / {governorMasteryInfo.gamesPlayed}G</span>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
           <button
             onClick={handleShare}
@@ -190,6 +207,22 @@ export function GameOverModal({ victory, stats, onClose, waveReached, livesRemai
               }}
             >
               {replaySaved ? 'Saved!' : 'Save Replay'}
+            </button>
+          )}
+          {onRematch && (
+            <button
+              onClick={onRematch}
+              style={{
+                flex: 1,
+                padding: '10px 20px',
+                background: 'rgba(68, 255, 136, 0.1)',
+                border: '1px solid #44ff88',
+                color: '#44ff88',
+                minWidth: 80,
+                fontWeight: 700,
+              }}
+            >
+              Play Again
             </button>
           )}
           <button

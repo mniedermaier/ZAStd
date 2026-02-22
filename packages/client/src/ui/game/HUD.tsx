@@ -1,6 +1,6 @@
 import { useGameStore } from '../../stores/game-store';
 import { useSettingsStore, getCBColor } from '../../stores/settings-store';
-import { calculateInterest, INTEREST_CAP_BASE, INTEREST_CAP_PER_WAVE } from '@zastd/engine';
+import { calculateInterest, INTEREST_CAP_BASE, INTEREST_CAP_PER_WAVE, WAVE_BASE_INCOME, WAVE_INCOME_PER_WAVE, DIFFICULTY_SCALING } from '@zastd/engine';
 
 interface HUDProps {
   playerId: string;
@@ -48,6 +48,11 @@ export function HUD({ playerId, onStartWave }: HUDProps) {
         clickHint={canStartWave && !cooldownActive ? 'Send early' : undefined}
       />
       <Stat label="Kills" value={player.kills} color={getCBColor('magic', cb)} />
+      {(() => {
+        const ds = DIFFICULTY_SCALING[snapshot.settings.difficulty] ?? DIFFICULTY_SCALING.normal;
+        const nextIncome = Math.floor((WAVE_BASE_INCOME + (snapshot.waveNumber + 1) * WAVE_INCOME_PER_WAVE) * ds.incomeMult);
+        return <Stat label="Income" value={`+${nextIncome}`} color={getCBColor('gold', cb)} sub={`Wave ${snapshot.waveNumber + 1}`} />;
+      })()}
       {playerCount > 1 && (
         <Stat label="Economy" value={snapshot.settings.moneySharing ? 'Shared' : 'Split'} color={snapshot.settings.moneySharing ? getCBColor('lives', cb) : '#8888aa'} />
       )}

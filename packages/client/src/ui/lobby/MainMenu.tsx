@@ -13,14 +13,16 @@ interface MainMenuProps {
   onPlayDaily?: () => void;
   onPlayEndless?: () => void;
   onPlayTutorial?: () => void;
+  onPlayWeekly?: () => void;
 }
 
-export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo, onPlayDaily, onPlayEndless, onPlayTutorial }: MainMenuProps) {
+export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo, onPlayDaily, onPlayEndless, onPlayTutorial, onPlayWeekly }: MainMenuProps) {
   const { playerName, setPlayerName } = useLobbyStore();
   const hasSupabase = isSupabaseConfigured();
   const stats = useStatsStore();
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showGameModes, setShowGameModes] = useState(false);
 
   return (
     <div style={{
@@ -88,62 +90,97 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
         >
           Play Solo
         </button>
-        {onPlayDaily && (
-          <button
-            onClick={onPlayDaily}
-            style={{
-              padding: 'min(12px, 2vh) 24px',
-              fontSize: 15,
-              border: '1px solid #ffaa44',
-              color: '#ffaa44',
-              background: 'rgba(255, 170, 68, 0.08)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 2,
-            }}
-          >
-            <span>Daily Challenge</span>
-            <span style={{ fontSize: 10, color: '#aa8844', fontWeight: 400 }}>Same seed for everyone today</span>
-          </button>
-        )}
-        {onPlayEndless && (
-          <button
-            onClick={onPlayEndless}
-            style={{
-              padding: 'min(12px, 2vh) 24px',
-              fontSize: 15,
-              border: '1px solid #cc44ff',
-              color: '#cc44ff',
-              background: 'rgba(204, 68, 255, 0.08)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 2,
-            }}
-          >
-            <span>Endless Mode</span>
-            <span style={{ fontSize: 10, color: '#9944aa', fontWeight: 400 }}>Survive as long as you can</span>
-          </button>
-        )}
-        {onPlayTutorial && (
-          <button
-            onClick={onPlayTutorial}
-            style={{
-              padding: 'min(12px, 2vh) 24px',
-              fontSize: 15,
-              border: '1px solid #44ff88',
-              color: '#44ff88',
-              background: 'rgba(68, 255, 136, 0.08)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 2,
-            }}
-          >
-            <span>Tutorial {!localStorage.getItem('zastd-tutorial-complete') ? '(New!)' : ''}</span>
-            <span style={{ fontSize: 10, color: '#44aa66', fontWeight: 400 }}>Learn the basics</span>
-          </button>
+        <button
+          onClick={() => setShowGameModes(!showGameModes)}
+          style={{
+            padding: 'min(12px, 2vh) 24px',
+            fontSize: 15,
+            border: '1px solid #44bbff',
+            color: '#44bbff',
+            background: 'rgba(68, 187, 255, 0.08)',
+          }}
+        >
+          Game Modes {showGameModes ? '\u25B2' : '\u25BC'}
+        </button>
+        {showGameModes && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'min(8px, 1.2vh)', paddingLeft: 12 }}>
+            {onPlayDaily && (
+              <button
+                onClick={onPlayDaily}
+                style={{
+                  padding: 'min(10px, 1.5vh) 20px',
+                  fontSize: 14,
+                  border: '1px solid #ffaa44',
+                  color: '#ffaa44',
+                  background: 'rgba(255, 170, 68, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <span>Daily Challenge</span>
+                <span style={{ fontSize: 10, color: '#aa8844', fontWeight: 400 }}>Same seed for everyone today</span>
+              </button>
+            )}
+            {onPlayWeekly && (
+              <button
+                onClick={onPlayWeekly}
+                style={{
+                  padding: 'min(10px, 1.5vh) 20px',
+                  fontSize: 14,
+                  border: '1px solid #ff8844',
+                  color: '#ff8844',
+                  background: 'rgba(255, 136, 68, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <span>Weekly Challenge</span>
+                <span style={{ fontSize: 10, color: '#aa6633', fontWeight: 400 }}>Harder weekly with forced modifiers</span>
+              </button>
+            )}
+            {onPlayEndless && (
+              <button
+                onClick={onPlayEndless}
+                style={{
+                  padding: 'min(10px, 1.5vh) 20px',
+                  fontSize: 14,
+                  border: '1px solid #cc44ff',
+                  color: '#cc44ff',
+                  background: 'rgba(204, 68, 255, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <span>Endless Mode</span>
+                <span style={{ fontSize: 10, color: '#9944aa', fontWeight: 400 }}>Survive as long as you can</span>
+              </button>
+            )}
+            {onPlayTutorial && (
+              <button
+                onClick={onPlayTutorial}
+                style={{
+                  padding: 'min(10px, 1.5vh) 20px',
+                  fontSize: 14,
+                  border: '1px solid #44ff88',
+                  color: '#44ff88',
+                  background: 'rgba(68, 255, 136, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <span>Tutorial {!localStorage.getItem('zastd-tutorial-complete') ? '(New!)' : ''}</span>
+                <span style={{ fontSize: 10, color: '#44aa66', fontWeight: 400 }}>Learn the basics</span>
+              </button>
+            )}
+          </div>
         )}
         <div style={{ borderTop: '1px solid #333366', margin: '2px 0' }} />
         <button
