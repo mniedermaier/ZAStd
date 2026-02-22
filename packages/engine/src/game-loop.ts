@@ -253,7 +253,7 @@ export class GameLoop {
               const killed = enemy.takeDamage(ability.damage, dmgType);
               if (killed) {
                 player.kills++;
-                player.addMoney(this._getReward(enemy.stats.reward));
+                this._awardKillReward(player, enemy);
                 this._onEnemyKilled(enemy, enemiesToSpawn);
               }
             }
@@ -272,7 +272,7 @@ export class GameLoop {
             const killed = enemy.takeDamage(ability.damage, 'magic');
             if (killed) {
               player.kills++;
-              player.addMoney(this._getReward(enemy.stats.reward));
+              this._awardKillReward(player, enemy);
               this._onEnemyKilled(enemy, enemiesToSpawn);
             }
           }
@@ -285,7 +285,7 @@ export class GameLoop {
               enemy.currentHealth = 0;
               enemy.isAlive = false;
               player.kills++;
-              player.addMoney(this._getReward(enemy.stats.reward));
+              this._awardKillReward(player, enemy);
               player.damageDealt += dmg;
               this._onEnemyKilled(enemy, enemiesToSpawn);
             }
@@ -570,6 +570,19 @@ export class GameLoop {
     return baseReward;
   }
 
+  /** Award kill reward — shared among all players when moneySharing is on */
+  private _awardKillReward(killer: { addMoney(n: number): void }, enemy: EnemyInstance): void {
+    const reward = this._getReward(enemy.stats.reward);
+    if (this.gameState.moneySharing && this.gameState.players.size > 1) {
+      const share = Math.max(1, Math.floor(reward / this.gameState.players.size));
+      for (const player of this.gameState.players.values()) {
+        player.addMoney(share);
+      }
+    } else {
+      killer.addMoney(reward);
+    }
+  }
+
   private _applyProjectileDamage(projectile: Projectile, target: EnemyInstance | null, currentTime: number): void {
     const tower = this.gameState.towers.get(projectile.towerId);
     if (!tower) return;
@@ -586,7 +599,7 @@ export class GameLoop {
         target.isAlive = false;
         if (owner) {
           owner.kills++;
-          owner.addMoney(this._getReward(target.stats.reward));
+          this._awardKillReward(owner, target);
           owner.damageDealt += executeDmg;
         }
         this._onEnemyKilled(target, enemiesToSpawn);
@@ -621,7 +634,7 @@ export class GameLoop {
         if (killed) {
           if (owner) {
             owner.kills++;
-            owner.addMoney(this._getReward(target.stats.reward));
+            this._awardKillReward(owner, target);
           }
           this._onEnemyKilled(target, enemiesToSpawn);
         }
@@ -649,7 +662,7 @@ export class GameLoop {
         if (owner) owner.damageDealt += chainHpBefore - chainEnemy.currentHealth;
         if (chainKilled && owner) {
           owner.kills++;
-          owner.addMoney(this._getReward(chainEnemy.stats.reward));
+          this._awardKillReward(owner, chainEnemy);
           this._onEnemyKilled(chainEnemy, enemiesToSpawn);
         }
       }
@@ -668,7 +681,7 @@ export class GameLoop {
           if (owner) owner.damageDealt += splashHpBefore - enemy.currentHealth;
           if (splashKilled && owner) {
             owner.kills++;
-            owner.addMoney(this._getReward(enemy.stats.reward));
+            this._awardKillReward(owner, enemy);
             this._onEnemyKilled(enemy, enemiesToSpawn);
           }
         }

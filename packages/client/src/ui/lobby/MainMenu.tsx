@@ -29,15 +29,32 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 24,
+      gap: 'min(16px, 2.5vh)',
+      overflow: 'auto',
+      WebkitOverflowScrolling: 'touch',
+      padding: 'max(env(safe-area-inset-top, 0px), 16px) 0 max(env(safe-area-inset-bottom, 0px), 16px)',
     }}>
-      <h1 style={{ fontSize: 36, color: '#44bbff', letterSpacing: 3, marginBottom: 8 }}>
-        ZAStd Tower Defense
-      </h1>
-      <p style={{ color: '#8888aa', fontSize: 13, marginTop: -16 }}>
-        Cooperative maze-building tower defense
-      </p>
+      <div style={{ flex: '1 0 0', minHeight: 8 }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'min(12px, 2vw)', padding: '0 12px' }}>
+        <img
+          src="/favicon.svg"
+          alt="ZAS"
+          style={{
+            width: 'min(52px, 10vw)',
+            height: 'min(52px, 10vw)',
+            filter: 'drop-shadow(0 0 8px rgba(68, 187, 255, 0.4))',
+            flexShrink: 0,
+          }}
+        />
+        <div>
+          <h1 style={{ fontSize: 'min(36px, 7vw)', color: '#44bbff', letterSpacing: 3, margin: 0, lineHeight: 1.1 }}>
+            ZAStd Tower Defense
+          </h1>
+          <p style={{ color: '#8888aa', fontSize: 'min(13px, 3vw)', margin: '2px 0 0 0' }}>
+            Cooperative maze-building tower defense
+          </p>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <label style={{ fontSize: 12, color: '#8888aa' }}>Name:</label>
@@ -50,25 +67,25 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
         />
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 'min(260px, 85vw)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'min(10px, 1.5vh)', width: 'min(260px, 85vw)' }}>
         {hasSupabase && (
           <>
-            <button className="primary" onClick={onBrowseRooms} style={{ padding: '12px 24px', fontSize: 15 }}>
+            <button className="primary" onClick={onBrowseRooms} style={{ padding: 'min(12px, 2vh) 24px', fontSize: 15 }}>
               Browse Rooms
             </button>
-            <button className="primary" onClick={onCreateRoom} style={{ padding: '12px 24px', fontSize: 15 }}>
+            <button className="primary" onClick={onCreateRoom} style={{ padding: 'min(12px, 2vh) 24px', fontSize: 15 }}>
               Create Room
             </button>
-            <button className="primary" onClick={onJoinByCode} style={{ padding: '12px 24px', fontSize: 15 }}>
+            <button className="primary" onClick={onJoinByCode} style={{ padding: 'min(12px, 2vh) 24px', fontSize: 15 }}>
               Join by Code
             </button>
-            <div style={{ borderTop: '1px solid #333366', margin: '4px 0' }} />
+            <div style={{ borderTop: '1px solid #333366', margin: '2px 0' }} />
           </>
         )}
         <button
           onClick={onPlaySolo}
           style={{
-            padding: '12px 24px',
+            padding: 'min(12px, 2vh) 24px',
             fontSize: 15,
             background: hasSupabase ? 'rgba(68, 187, 255, 0.08)' : undefined,
           }}
@@ -80,7 +97,7 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
           <button
             onClick={onPlayDaily}
             style={{
-              padding: '12px 24px',
+              padding: 'min(12px, 2vh) 24px',
               fontSize: 15,
               border: '1px solid #ffaa44',
               color: '#ffaa44',
@@ -99,7 +116,7 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
           <button
             onClick={onPlayEndless}
             style={{
-              padding: '12px 24px',
+              padding: 'min(12px, 2vh) 24px',
               fontSize: 15,
               border: '1px solid #cc44ff',
               color: '#cc44ff',
@@ -118,7 +135,7 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
           <button
             onClick={onPlayTutorial}
             style={{
-              padding: '12px 24px',
+              padding: 'min(12px, 2vh) 24px',
               fontSize: 15,
               border: '1px solid #44ff88',
               color: '#44ff88',
@@ -133,10 +150,10 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
             <span style={{ fontSize: 10, color: '#44aa66', fontWeight: 400 }}>Learn the basics</span>
           </button>
         )}
-        <div style={{ borderTop: '1px solid #333366', margin: '4px 0' }} />
+        <div style={{ borderTop: '1px solid #333366', margin: '2px 0' }} />
         <button
           onClick={() => setShowSettings(!showSettings)}
-          style={{ padding: '10px 24px', fontSize: 14, color: '#8888aa' }}
+          style={{ padding: 'min(10px, 1.5vh) 24px', fontSize: 14, color: '#8888aa' }}
         >
           Settings
         </button>
@@ -201,12 +218,14 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
 
       {showLeaderboard && <LeaderboardPanel onClose={() => setShowLeaderboard(false)} />}
 
+      <div style={{ flex: '1 0 0', minHeight: 8 }} />
+
       <div style={{
-        position: 'fixed',
-        bottom: 12,
         display: 'flex',
         alignItems: 'center',
         gap: 12,
+        paddingTop: 8,
+        flexShrink: 0,
       }}>
         <a
           href="https://github.com/mniedermaier/ZAStd"

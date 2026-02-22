@@ -9,17 +9,17 @@ import {
 import type { WaveMutatorType } from './types';
 
 export const ENEMY_DEFINITIONS: Record<EnemyType, EnemyStats> = {
-  [EnemyType.Basic]: { enemyType: EnemyType.Basic, maxHealth: 40, speed: 2.0, reward: 15, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Fast]: { enemyType: EnemyType.Fast, maxHealth: 25, speed: 4.0, reward: 18, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Tank]: { enemyType: EnemyType.Tank, maxHealth: 150, speed: 1.0, reward: 40, damage: 2, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Swarm]: { enemyType: EnemyType.Swarm, maxHealth: 15, speed: 2.5, reward: 8, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Boss]: { enemyType: EnemyType.Boss, maxHealth: 1200, speed: 0.8, reward: 150, damage: 8, armor: 0.25, magicResist: 0.25, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Armored]: { enemyType: EnemyType.Armored, maxHealth: 100, speed: 1.5, reward: 30, damage: 1, armor: 0.50, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.MagicResist]: { enemyType: EnemyType.MagicResist, maxHealth: 80, speed: 2.0, reward: 30, damage: 1, armor: 0, magicResist: 0.50, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Flying]: { enemyType: EnemyType.Flying, maxHealth: 50, speed: 3.0, reward: 25, damage: 1, armor: 0, magicResist: 0, isFlying: true, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Healer]: { enemyType: EnemyType.Healer, maxHealth: 60, speed: 1.8, reward: 35, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 5.0, splitInto: null, splitCount: 0 },
-  [EnemyType.Berserker]: { enemyType: EnemyType.Berserker, maxHealth: 70, speed: 2.0, reward: 28, damage: 2, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
-  [EnemyType.Splitter]: { enemyType: EnemyType.Splitter, maxHealth: 80, speed: 1.8, reward: 20, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: 'basic', splitCount: 2 },
+  [EnemyType.Basic]: { enemyType: EnemyType.Basic, maxHealth: 40, speed: 2.0, reward: 5, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Fast]: { enemyType: EnemyType.Fast, maxHealth: 25, speed: 4.0, reward: 6, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Tank]: { enemyType: EnemyType.Tank, maxHealth: 150, speed: 1.0, reward: 12, damage: 2, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Swarm]: { enemyType: EnemyType.Swarm, maxHealth: 15, speed: 2.5, reward: 3, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Boss]: { enemyType: EnemyType.Boss, maxHealth: 1200, speed: 0.8, reward: 50, damage: 8, armor: 0.25, magicResist: 0.25, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Armored]: { enemyType: EnemyType.Armored, maxHealth: 100, speed: 1.5, reward: 10, damage: 1, armor: 0.50, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.MagicResist]: { enemyType: EnemyType.MagicResist, maxHealth: 80, speed: 2.0, reward: 10, damage: 1, armor: 0, magicResist: 0.50, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Flying]: { enemyType: EnemyType.Flying, maxHealth: 50, speed: 3.0, reward: 8, damage: 1, armor: 0, magicResist: 0, isFlying: true, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Healer]: { enemyType: EnemyType.Healer, maxHealth: 60, speed: 1.8, reward: 12, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 5.0, splitInto: null, splitCount: 0 },
+  [EnemyType.Berserker]: { enemyType: EnemyType.Berserker, maxHealth: 70, speed: 2.0, reward: 9, damage: 2, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
+  [EnemyType.Splitter]: { enemyType: EnemyType.Splitter, maxHealth: 80, speed: 1.8, reward: 7, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: 'basic', splitCount: 2 },
 };
 
 export class EnemyInstance {

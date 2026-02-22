@@ -120,7 +120,7 @@ describe('TowerInstance', () => {
   it('sell value based on cost and upgrades', () => {
     const tower = new TowerInstance('t1', TowerType.Arrow, 'p1', 5, 5);
     const baseSell = tower.getSellValue();
-    expect(baseSell).toBe(Math.floor(40 * 0.7));
+    expect(baseSell).toBe(Math.floor(10 * 0.7));
     tower.upgrade();
     expect(tower.getSellValue()).toBeGreaterThan(baseSell);
   });
@@ -242,10 +242,10 @@ describe('Governor', () => {
 describe('Economy', () => {
   it('calculates interest', () => {
     expect(calculateInterest(1000, 0.01)).toBe(10);
-    // Cap scales with wave: base 200 + wave * 20
-    expect(calculateInterest(100000, 0.01, 0)).toBe(200); // wave 0, cap = 200
-    expect(calculateInterest(100000, 0.01, 20)).toBe(600); // wave 20, cap = 200 + 400 = 600
-    expect(calculateInterest(100000, 0.01, 40)).toBe(1000); // wave 40, cap = 200 + 800 = 1000
+    // Cap scales with wave: base 100 + wave * 10
+    expect(calculateInterest(100000, 0.01, 0)).toBe(100); // wave 0, cap = 100
+    expect(calculateInterest(100000, 0.01, 20)).toBe(300); // wave 20, cap = 100 + 200 = 300
+    expect(calculateInterest(100000, 0.01, 40)).toBe(500); // wave 40, cap = 100 + 400 = 500
   });
 
   it('awards lumber every 5 waves', () => {

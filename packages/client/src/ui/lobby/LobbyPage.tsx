@@ -113,9 +113,9 @@ export function LobbyPage({
       {/* Governor selection */}
       <div>
         <h3 style={{ color: '#8888aa', marginBottom: 8, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }}>
-          Choose Governor
+          {dailyInfo ? 'Governor (Locked)' : 'Choose Governor'}
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8, width: '100%', maxWidth: 500 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8, width: '100%', maxWidth: 500, opacity: dailyInfo ? 0.6 : 1, pointerEvents: dailyInfo ? 'none' : 'auto' }}>
           {Object.keys(GOVERNORS).map(elem => (
             <GovernorCard
               key={elem}
@@ -145,6 +145,7 @@ export function LobbyPage({
               value={settings.mapSize}
               onChange={(e) => onUpdateSettings({ mapSize: e.target.value })}
             >
+              <option value="tiny">Tiny</option>
               <option value="small">Small</option>
               <option value="medium">Medium</option>
               <option value="large">Large</option>

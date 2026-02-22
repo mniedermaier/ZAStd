@@ -47,57 +47,57 @@ function stats(
 
 export const TOWER_DEFINITIONS: Record<TowerType, TowerStats> = {
   // Common
-  [TowerType.Arrow]: stats(TowerType.Arrow, 40, 12, 3.5, 1.2, 8.0),
-  [TowerType.Cannon]: stats(TowerType.Cannon, 80, 30, 3.0, 0.6, 6.0, DAMAGE_TYPE_PHYSICAL, { splashRadius: 1.5 }),
-  [TowerType.FrostTrap]: stats(TowerType.FrostTrap, 60, 8, 3.5, 1.0, 10.0, DAMAGE_TYPE_MAGIC, { slowAmount: 0.4, slowDuration: 2.0 }),
+  [TowerType.Arrow]: stats(TowerType.Arrow, 10, 12, 3.5, 1.2, 8.0),
+  [TowerType.Cannon]: stats(TowerType.Cannon, 25, 30, 3.0, 0.6, 6.0, DAMAGE_TYPE_PHYSICAL, { splashRadius: 1.5 }),
+  [TowerType.FrostTrap]: stats(TowerType.FrostTrap, 50, 8, 3.5, 1.0, 10.0, DAMAGE_TYPE_MAGIC, { slowAmount: 0.4, slowDuration: 2.0 }),
 
   // Fire
-  [TowerType.FireArrow]: stats(TowerType.FireArrow, 50, 18, 4.0, 1.5, 10.0),
-  [TowerType.Inferno]: stats(TowerType.Inferno, 100, 35, 3.0, 0.8, 7.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.0 }),
-  [TowerType.Meteor]: stats(TowerType.Meteor, 180, 80, 5.0, 0.3, 4.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.5, stunDuration: 0.5 }),
-  [TowerType.Volcano]: stats(TowerType.Volcano, 350, 120, 4.0, 0.4, 5.0, DAMAGE_TYPE_MAGIC, { splashRadius: 3.0, stunDuration: 0.8 }),
+  [TowerType.FireArrow]: stats(TowerType.FireArrow, 35, 18, 4.0, 1.5, 10.0),
+  [TowerType.Inferno]: stats(TowerType.Inferno, 80, 35, 3.0, 0.8, 7.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.0 }),
+  [TowerType.Meteor]: stats(TowerType.Meteor, 160, 80, 5.0, 0.3, 4.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.5, stunDuration: 0.5 }),
+  [TowerType.Volcano]: stats(TowerType.Volcano, 300, 120, 4.0, 0.4, 5.0, DAMAGE_TYPE_MAGIC, { splashRadius: 3.0, stunDuration: 0.8 }),
 
   // Ice
-  [TowerType.IceShard]: stats(TowerType.IceShard, 50, 14, 4.0, 1.2, 9.0, DAMAGE_TYPE_MAGIC, { slowAmount: 0.3, slowDuration: 2.0 }),
-  [TowerType.Blizzard]: stats(TowerType.Blizzard, 110, 20, 4.5, 0.7, 6.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.0, slowAmount: 0.5, slowDuration: 3.0 }),
-  [TowerType.Glacier]: stats(TowerType.Glacier, 200, 10, 3.5, 0.5, 8.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.5, stunDuration: 1.5 }),
-  [TowerType.Avalanche]: stats(TowerType.Avalanche, 380, 50, 5.0, 0.4, 5.0, DAMAGE_TYPE_MAGIC, { splashRadius: 3.5, slowAmount: 0.6, slowDuration: 4.0, stunDuration: 1.0 }),
+  [TowerType.IceShard]: stats(TowerType.IceShard, 35, 14, 4.0, 1.2, 9.0, DAMAGE_TYPE_MAGIC, { slowAmount: 0.3, slowDuration: 2.0 }),
+  [TowerType.Blizzard]: stats(TowerType.Blizzard, 90, 20, 4.5, 0.7, 6.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.0, slowAmount: 0.5, slowDuration: 3.0 }),
+  [TowerType.Glacier]: stats(TowerType.Glacier, 180, 10, 3.5, 0.5, 8.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.5, stunDuration: 1.5 }),
+  [TowerType.Avalanche]: stats(TowerType.Avalanche, 320, 50, 5.0, 0.4, 5.0, DAMAGE_TYPE_MAGIC, { splashRadius: 3.5, slowAmount: 0.6, slowDuration: 4.0, stunDuration: 1.0 }),
 
   // Thunder
-  [TowerType.Spark]: stats(TowerType.Spark, 55, 16, 4.0, 1.3, 15.0, DAMAGE_TYPE_MAGIC, { chainCount: 1 }),
-  [TowerType.Lightning]: stats(TowerType.Lightning, 120, 28, 5.0, 0.9, 20.0, DAMAGE_TYPE_MAGIC, { chainCount: 3 }),
-  [TowerType.Storm]: stats(TowerType.Storm, 220, 40, 5.5, 0.7, 20.0, DAMAGE_TYPE_MAGIC, { chainCount: 5 }),
-  [TowerType.Tempest]: stats(TowerType.Tempest, 400, 60, 6.0, 0.8, 25.0, DAMAGE_TYPE_MAGIC, { chainCount: 8, stunDuration: 0.3 }),
+  [TowerType.Spark]: stats(TowerType.Spark, 40, 16, 4.0, 1.3, 15.0, DAMAGE_TYPE_MAGIC, { chainCount: 1 }),
+  [TowerType.Lightning]: stats(TowerType.Lightning, 100, 28, 5.0, 0.9, 20.0, DAMAGE_TYPE_MAGIC, { chainCount: 3 }),
+  [TowerType.Storm]: stats(TowerType.Storm, 200, 40, 5.5, 0.7, 20.0, DAMAGE_TYPE_MAGIC, { chainCount: 5 }),
+  [TowerType.Tempest]: stats(TowerType.Tempest, 350, 60, 6.0, 0.8, 25.0, DAMAGE_TYPE_MAGIC, { chainCount: 8, stunDuration: 0.3 }),
 
   // Poison
-  [TowerType.Venom]: stats(TowerType.Venom, 50, 8, 4.0, 1.0, 7.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 12, poisonDuration: 3.0 }),
-  [TowerType.Plague]: stats(TowerType.Plague, 100, 10, 4.5, 0.8, 6.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 20, poisonDuration: 4.0, splashRadius: 1.5 }),
-  [TowerType.Miasma]: stats(TowerType.Miasma, 200, 5, 5.0, 0.6, 5.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 35, poisonDuration: 5.0, splashRadius: 2.0, armorReduction: 0.2 }),
-  [TowerType.Pandemic]: stats(TowerType.Pandemic, 380, 15, 5.5, 0.5, 5.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 50, poisonDuration: 6.0, splashRadius: 3.0, armorReduction: 0.3 }),
+  [TowerType.Venom]: stats(TowerType.Venom, 35, 8, 4.0, 1.0, 7.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 12, poisonDuration: 3.0 }),
+  [TowerType.Plague]: stats(TowerType.Plague, 80, 10, 4.5, 0.8, 6.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 20, poisonDuration: 4.0, splashRadius: 1.5 }),
+  [TowerType.Miasma]: stats(TowerType.Miasma, 180, 5, 5.0, 0.6, 5.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 35, poisonDuration: 5.0, splashRadius: 2.0, armorReduction: 0.2 }),
+  [TowerType.Pandemic]: stats(TowerType.Pandemic, 320, 15, 5.5, 0.5, 5.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 50, poisonDuration: 6.0, splashRadius: 3.0, armorReduction: 0.3 }),
 
   // Death
-  [TowerType.SoulDrain]: stats(TowerType.SoulDrain, 55, 15, 3.5, 1.0, 8.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.05 }),
-  [TowerType.Necrosis]: stats(TowerType.Necrosis, 110, 25, 4.0, 0.8, 7.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.10, armorReduction: 0.15 }),
-  [TowerType.Wraith]: stats(TowerType.Wraith, 210, 40, 4.5, 0.6, 9.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.15 }),
-  [TowerType.Reaper]: stats(TowerType.Reaper, 400, 60, 5.0, 0.5, 10.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.20 }),
+  [TowerType.SoulDrain]: stats(TowerType.SoulDrain, 40, 15, 3.5, 1.0, 8.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.05 }),
+  [TowerType.Necrosis]: stats(TowerType.Necrosis, 90, 25, 4.0, 0.8, 7.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.10, armorReduction: 0.15 }),
+  [TowerType.Wraith]: stats(TowerType.Wraith, 190, 40, 4.5, 0.6, 9.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.15 }),
+  [TowerType.Reaper]: stats(TowerType.Reaper, 350, 60, 5.0, 0.5, 10.0, DAMAGE_TYPE_MAGIC, { executeThreshold: 0.20 }),
 
   // Nature
-  [TowerType.Thorn]: stats(TowerType.Thorn, 45, 14, 3.5, 1.2, 8.0, DAMAGE_TYPE_PHYSICAL, { stunDuration: 0.3 }),
-  [TowerType.Entangle]: stats(TowerType.Entangle, 100, 10, 4.0, 0.7, 7.0, DAMAGE_TYPE_PHYSICAL, { stunDuration: 1.5, slowAmount: 0.4, slowDuration: 3.0 }),
-  [TowerType.Decay]: stats(TowerType.Decay, 190, 20, 4.5, 0.6, 6.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 15, poisonDuration: 4.0, armorReduction: 0.25 }),
-  [TowerType.WorldTree]: stats(TowerType.WorldTree, 380, 30, 6.0, 0.5, 6.0, DAMAGE_TYPE_MAGIC, { stunDuration: 2.0, splashRadius: 2.5, auraRange: 5.0, auraDamageBoost: 0.10, auraSpeedBoost: 0.10 }),
+  [TowerType.Thorn]: stats(TowerType.Thorn, 30, 14, 3.5, 1.2, 8.0, DAMAGE_TYPE_PHYSICAL, { stunDuration: 0.3 }),
+  [TowerType.Entangle]: stats(TowerType.Entangle, 80, 10, 4.0, 0.7, 7.0, DAMAGE_TYPE_PHYSICAL, { stunDuration: 1.5, slowAmount: 0.4, slowDuration: 3.0 }),
+  [TowerType.Decay]: stats(TowerType.Decay, 170, 20, 4.5, 0.6, 6.0, DAMAGE_TYPE_MAGIC, { poisonDamage: 15, poisonDuration: 4.0, armorReduction: 0.25 }),
+  [TowerType.WorldTree]: stats(TowerType.WorldTree, 320, 30, 6.0, 0.5, 6.0, DAMAGE_TYPE_MAGIC, { stunDuration: 2.0, splashRadius: 2.5, auraRange: 5.0, auraDamageBoost: 0.10, auraSpeedBoost: 0.10 }),
 
   // Arcane
-  [TowerType.ArcaneBolt]: stats(TowerType.ArcaneBolt, 50, 18, 4.5, 1.1, 12.0, DAMAGE_TYPE_MAGIC),
-  [TowerType.ManaDrain]: stats(TowerType.ManaDrain, 110, 25, 5.0, 0.9, 10.0, DAMAGE_TYPE_MAGIC, { armorReduction: 0.20 }),
-  [TowerType.Rift]: stats(TowerType.Rift, 210, 45, 4.0, 0.5, 8.0, DAMAGE_TYPE_MAGIC, { teleportDistance: 5.0 }),
-  [TowerType.Singularity]: stats(TowerType.Singularity, 400, 70, 5.0, 0.4, 6.0, DAMAGE_TYPE_MAGIC, { splashRadius: 3.0, teleportDistance: 8.0 }),
+  [TowerType.ArcaneBolt]: stats(TowerType.ArcaneBolt, 35, 18, 4.5, 1.1, 12.0, DAMAGE_TYPE_MAGIC),
+  [TowerType.ManaDrain]: stats(TowerType.ManaDrain, 90, 25, 5.0, 0.9, 10.0, DAMAGE_TYPE_MAGIC, { armorReduction: 0.20 }),
+  [TowerType.Rift]: stats(TowerType.Rift, 190, 45, 4.0, 0.5, 8.0, DAMAGE_TYPE_MAGIC, { teleportDistance: 5.0 }),
+  [TowerType.Singularity]: stats(TowerType.Singularity, 350, 70, 5.0, 0.4, 6.0, DAMAGE_TYPE_MAGIC, { splashRadius: 3.0, teleportDistance: 8.0 }),
 
   // Holy
-  [TowerType.Smite]: stats(TowerType.Smite, 50, 16, 4.0, 1.0, 15.0, DAMAGE_TYPE_MAGIC),
-  [TowerType.AuraTower]: stats(TowerType.AuraTower, 120, 12, 3.0, 0.5, 10.0, DAMAGE_TYPE_MAGIC, { auraRange: 5.0, auraDamageBoost: 0.15, auraSpeedBoost: 0.10 }),
-  [TowerType.Divine]: stats(TowerType.Divine, 200, 35, 5.0, 0.8, 12.0, DAMAGE_TYPE_MAGIC, { splashRadius: 1.5 }),
-  [TowerType.Seraph]: stats(TowerType.Seraph, 400, 50, 6.0, 0.7, 15.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.0, auraRange: 6.0, auraDamageBoost: 0.20, auraSpeedBoost: 0.15 }),
+  [TowerType.Smite]: stats(TowerType.Smite, 35, 16, 4.0, 1.0, 15.0, DAMAGE_TYPE_MAGIC),
+  [TowerType.AuraTower]: stats(TowerType.AuraTower, 100, 12, 3.0, 0.5, 10.0, DAMAGE_TYPE_MAGIC, { auraRange: 5.0, auraDamageBoost: 0.15, auraSpeedBoost: 0.10 }),
+  [TowerType.Divine]: stats(TowerType.Divine, 180, 35, 5.0, 0.8, 12.0, DAMAGE_TYPE_MAGIC, { splashRadius: 1.5 }),
+  [TowerType.Seraph]: stats(TowerType.Seraph, 350, 50, 6.0, 0.7, 15.0, DAMAGE_TYPE_MAGIC, { splashRadius: 2.0, auraRange: 6.0, auraDamageBoost: 0.20, auraSpeedBoost: 0.15 }),
 };
 
 export function getUpgradeCost(baseCost: number, currentLevel: number): number {

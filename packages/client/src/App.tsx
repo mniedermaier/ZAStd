@@ -411,7 +411,7 @@ function SoloMode() {
           }
         }
       }
-    }, 100);
+    }, 50);
     return () => clearInterval(interval);
   }, [inGame, gameState, setSnapshot, prevWaveNumber]);
 
@@ -625,7 +625,7 @@ function SoloMode() {
         onReady={handleReady}
         onStartGame={handleStartGame}
         onUpdateSettings={handleUpdateSettings}
-        settings={snapshot?.settings ?? { mapSize: 'medium', mapLayout: 'classic', difficulty: 'normal', moneySharing: false }}
+        settings={snapshot?.settings ?? { mapSize: 'tiny', mapLayout: 'classic', difficulty: 'normal', moneySharing: false }}
         allReady={gameState.allPlayersReady()}
         isHost={true}
         onLeave={isSupabaseConfigured() ? () => {
@@ -757,7 +757,7 @@ function DailyMode() {
           }
         }
       }
-    }, 100);
+    }, 50);
     return () => clearInterval(interval);
   }, [inGame, gameState, setSnapshot, prevWaveNumber]);
 
@@ -1092,7 +1092,7 @@ function EndlessMode() {
           }
         }
       }
-    }, 100);
+    }, 50);
     return () => clearInterval(interval);
   }, [inGame, gameState, setSnapshot, prevWaveNumber]);
 
@@ -1308,7 +1308,7 @@ function EndlessMode() {
         onReady={handleReady}
         onStartGame={handleStartGame}
         onUpdateSettings={handleUpdateSettings}
-        settings={snapshot?.settings ?? { mapSize: 'medium', mapLayout: 'classic', difficulty: 'normal', moneySharing: false }}
+        settings={snapshot?.settings ?? { mapSize: 'tiny', mapLayout: 'classic', difficulty: 'normal', moneySharing: false }}
         allReady={gameState.allPlayersReady()}
         isHost={true}
         onLeave={isSupabaseConfigured() ? () => {
@@ -1558,7 +1558,7 @@ function MultiplayerMode() {
         onReady={handleReady}
         onStartGame={handleStartGame}
         onUpdateSettings={handleUpdateSettings}
-        settings={snapshot?.settings ?? { mapSize: 'medium', mapLayout: 'classic', difficulty: 'normal', moneySharing: false }}
+        settings={snapshot?.settings ?? { mapSize: 'tiny', mapLayout: 'classic', difficulty: 'normal', moneySharing: false }}
         allReady={allReady}
         isHost={isHost}
         roomCode={currentRoomCode ?? undefined}
@@ -1607,7 +1607,7 @@ function TutorialMode() {
   const [gameState] = useState(() => {
     const gs = new GameState();
     gs.isTutorial = true;
-    gs.updateSettings({ mapSize: 'small', difficulty: 'easy' });
+    gs.updateSettings({ mapSize: 'tiny', difficulty: 'easy' });
     return gs;
   });
   const gameLoopRef = useRef<GameLoop | null>(null);
@@ -1645,7 +1645,7 @@ function TutorialMode() {
           }
         }
       }
-    }, 100);
+    }, 50);
     return () => clearInterval(interval);
   }, [inGame, gameState, setSnapshot]);
 
@@ -1792,9 +1792,9 @@ function TutorialMode() {
         onReady={handleReady}
         onStartGame={handleStartGame}
         onUpdateSettings={() => {}}
-        settings={snapshot?.settings ?? { mapSize: 'small', mapLayout: 'classic', difficulty: 'easy', moneySharing: false }}
+        settings={snapshot?.settings ?? { mapSize: 'tiny', mapLayout: 'classic', difficulty: 'easy', moneySharing: false }}
         allReady={gameState.allPlayersReady()}
-        isHost={false}
+        isHost={true}
         onLeave={() => setAppPhase('main_menu')}
       />
     );

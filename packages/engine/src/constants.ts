@@ -3,7 +3,7 @@ export const MAX_PLAYERS = 16;
 export const TICK_RATE = 20;
 
 // Player Starting Resources
-export const STARTING_MONEY = 200;
+export const STARTING_MONEY = 100;
 export const STARTING_LIVES = 30;
 
 // Wave Configuration
@@ -13,31 +13,32 @@ export const VICTORY_WAVE = 40;
 
 // Map Sizes
 export const MAP_SIZES: Record<string, { width: number; height: number }> = {
+  tiny: { width: 30, height: 20 },
   small: { width: 50, height: 30 },
   medium: { width: 80, height: 50 },
   large: { width: 120, height: 80 },
 };
 
-export const DEFAULT_MAP_WIDTH = 80;
-export const DEFAULT_MAP_HEIGHT = 50;
+export const DEFAULT_MAP_WIDTH = 30;
+export const DEFAULT_MAP_HEIGHT = 20;
 
 // Difficulty & Map Validation
 export const VALID_DIFFICULTIES = ['easy', 'normal', 'hard', 'extreme'] as const;
-export const VALID_MAP_SIZES = ['small', 'medium', 'large'] as const;
+export const VALID_MAP_SIZES = ['tiny', 'small', 'medium', 'large'] as const;
 
 // Difficulty scaling: { healthMult, speedMult, incomeMult, startingMoneyMult }
 export const DIFFICULTY_SCALING: Record<string, { healthMult: number; speedMult: number; incomeMult: number; startingMoneyMult: number }> = {
-  easy:    { healthMult: 0.7,  speedMult: 0.9, incomeMult: 1.3, startingMoneyMult: 1.5 },
+  easy:    { healthMult: 0.7,  speedMult: 0.9, incomeMult: 1.5, startingMoneyMult: 1.5 },
   normal:  { healthMult: 1.0,  speedMult: 1.0, incomeMult: 1.0, startingMoneyMult: 1.0 },
-  hard:    { healthMult: 1.5,  speedMult: 1.1, incomeMult: 0.8, startingMoneyMult: 0.8 },
-  extreme: { healthMult: 2.2,  speedMult: 1.2, incomeMult: 0.6, startingMoneyMult: 0.6 },
+  hard:    { healthMult: 1.6,  speedMult: 1.15, incomeMult: 0.75, startingMoneyMult: 0.8 },
+  extreme: { healthMult: 2.5,  speedMult: 1.3, incomeMult: 0.5, startingMoneyMult: 0.6 },
 };
 
 // Projectile Constants
 export const PROJECTILE_HIT_DISTANCE = 0.1;
 
 // Tower Upgrade Constants
-export const UPGRADE_COST_MULTIPLIER = 0.6;
+export const UPGRADE_COST_MULTIPLIER = 0.75;
 export const UPGRADE_DAMAGE_BOOST = 0.20;
 export const UPGRADE_RANGE_BOOST = 0.10;
 export const UPGRADE_FIRE_RATE_BOOST = 0.06;
@@ -50,14 +51,14 @@ export const SELL_REFUND_PERCENTAGE = 0.7;
 export const MAX_TOWER_LEVEL = 4;
 
 // Wave Income
-export const WAVE_BASE_INCOME = 100;
-export const WAVE_INCOME_PER_WAVE = 15;
+export const WAVE_BASE_INCOME = 40;
+export const WAVE_INCOME_PER_WAVE = 8;
 
 // Enemy Spawning
 export const DEFAULT_SPAWN_INTERVAL = 0.5;
 
 // Wave Scaling
-export const DIFFICULTY_MULTIPLIER_PER_WAVE = 0.14;
+export const DIFFICULTY_MULTIPLIER_PER_WAVE = 0.18;
 export const PLAYER_MULTIPLIER_SCALING = 0.60;
 
 // Damage Types
@@ -68,8 +69,8 @@ export const DAMAGE_TYPE_MAGIC = 'magic' as const;
 export const LUMBER_WAVE_INTERVAL = 5;
 export const LUMBER_PER_AWARD = 1;
 export const BASE_INTEREST_RATE = 0.01;
-export const INTEREST_CAP_BASE = 200;
-export const INTEREST_CAP_PER_WAVE = 20;
+export const INTEREST_CAP_BASE = 100;
+export const INTEREST_CAP_PER_WAVE = 10;
 
 // Endless Mode
 export const ENDLESS_BOSS_INTERVAL = 10;
@@ -78,7 +79,7 @@ export const ENDLESS_BOSS_INTERVAL = 10;
 export const CHALLENGE_MODIFIERS: Record<string, { name: string; description: string; scoreMultiplier: number }> = {
   no_sell:      { name: 'No Sell',       description: "Can't sell towers",                scoreMultiplier: 1.5 },
   glass_cannon: { name: 'Glass Cannon',  description: 'Start with 10 lives instead of 30', scoreMultiplier: 1.3 },
-  poverty:      { name: 'Poverty',       description: 'Start with 100 gold instead of 200', scoreMultiplier: 1.3 },
+  poverty:      { name: 'Poverty',       description: 'Start with 50 gold instead of 100', scoreMultiplier: 1.3 },
   speed_demon:  { name: 'Speed Demon',   description: 'Enemies move 30% faster',          scoreMultiplier: 1.4 },
   no_upgrades:  { name: 'No Upgrades',   description: "Can't upgrade towers",             scoreMultiplier: 1.5 },
 };
@@ -145,12 +146,14 @@ export const VALID_MAP_LAYOUTS = ['classic', 'spiral', 'crossroads'] as const;
 
 // Classic: 4 corner waypoints, spawn/end on left side
 export const MAP_WAYPOINTS: Record<string, [number, number][]> = {
+  tiny:   [[3, 2],  [26, 2],  [26, 17], [3, 17]],
   small:  [[4, 3],  [45, 3],  [45, 26], [4, 26]],
   medium: [[6, 6],  [73, 6],  [73, 43], [6, 43]],
   large:  [[8, 8],  [111, 8], [111, 71], [8, 71]],
 };
 
 export const MAP_SPAWN_END: Record<string, { spawn: [number, number]; end: [number, number] }> = {
+  tiny:   { spawn: [0, 5],  end: [0, 14] },
   small:  { spawn: [0, 7],  end: [0, 22] },
   medium: { spawn: [0, 12], end: [0, 38] },
   large:  { spawn: [0, 16], end: [0, 64] },
@@ -158,12 +161,14 @@ export const MAP_SPAWN_END: Record<string, { spawn: [number, number]; end: [numb
 
 // Spiral: path spirals from outer edge to center
 export const SPIRAL_WAYPOINTS: Record<string, [number, number][]> = {
+  tiny:   [[3, 2], [26, 2], [26, 17], [6, 17], [6, 6], [20, 6], [20, 13]],
   small:  [[4, 3], [45, 3], [45, 26], [8, 26], [8, 8], [38, 8], [38, 20], [15, 20]],
   medium: [[6, 6], [73, 6], [73, 43], [12, 43], [12, 14], [60, 14], [60, 36], [22, 36], [22, 22], [50, 22]],
   large:  [[8, 8], [111, 8], [111, 71], [16, 71], [16, 18], [100, 18], [100, 62], [26, 62], [26, 28], [88, 28], [88, 52], [36, 52]],
 };
 
 export const SPIRAL_SPAWN_END: Record<string, { spawn: [number, number]; end: [number, number] }> = {
+  tiny:   { spawn: [0, 2],   end: [15, 10] },
   small:  { spawn: [0, 3],   end: [25, 15] },
   medium: { spawn: [0, 6],   end: [40, 25] },
   large:  { spawn: [0, 8],   end: [60, 40] },
@@ -171,12 +176,14 @@ export const SPIRAL_SPAWN_END: Record<string, { spawn: [number, number]; end: [n
 
 // Crossroads: two entry points, paths cross in the middle
 export const CROSSROADS_WAYPOINTS: Record<string, [number, number][]> = {
+  tiny:   [[14, 2], [14, 17]],
   small:  [[22, 3], [22, 26]],
   medium: [[38, 6], [38, 43]],
   large:  [[56, 8], [56, 71]],
 };
 
 export const CROSSROADS_SPAWN_END: Record<string, { spawn: [number, number]; end: [number, number] }> = {
+  tiny:   { spawn: [0, 10],  end: [29, 10] },
   small:  { spawn: [0, 15],  end: [49, 15] },
   medium: { spawn: [0, 25],  end: [79, 25] },
   large:  { spawn: [0, 40],  end: [119, 40] },
