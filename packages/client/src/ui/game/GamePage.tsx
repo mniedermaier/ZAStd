@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { PhaserGame } from '../../phaser/PhaserGame';
+import { PhaserGameLazy as PhaserGame } from '../../phaser/PhaserGameLazy';
 import { HUD } from './HUD';
 import { TowerBuildBar } from './TowerBuildBar';
 import { TowerInfoPanel } from './TowerInfoPanel';
@@ -35,7 +35,13 @@ interface GamePageProps {
   onUseAbility?: (targetX?: number, targetY?: number) => void;
   onQuit: () => void;
   onSendChat?: (message: string) => void;
+  onPing?: (data: { x: number; y: number; pingType: string }) => void;
+  onSendCreeps?: (enemyType: string, count: number) => void;
+  onQueueUpgrade?: (towerId: string) => void;
+  onCancelQueue?: (towerId: string) => void;
   showChat?: boolean;
+  isSolo?: boolean;
+  isSpectating?: boolean;
 }
 
 function useIsMobile() {
@@ -54,12 +60,14 @@ function useIsMobile() {
 
 export function GamePage({
   playerId, playerName, onPlaceTower, onUpgradeTower, onSellTower, onSetTargeting, onStartWave, onBuyTech, onUseAbility, onQuit,
-  onSendChat, showChat,
+  onSendChat, onPing, onSendCreeps, onQueueUpgrade, onCancelQueue, showChat, isSolo, isSpectating,
 }: GamePageProps) {
   const isPaused = useSettingsStore((s) => s.isPaused);
   const showHelp = useSettingsStore((s) => s.showHelp);
   const setIsPaused = useSettingsStore((s) => s.setIsPaused);
   const setShowHelp = useSettingsStore((s) => s.setShowHelp);
+  const gameSpeed = useSettingsStore((s) => s.gameSpeed);
+  const setGameSpeed = useSettingsStore((s) => s.setGameSpeed);
 
   const isMobile = useIsMobile();
   const [activePanel, setActivePanel] = useState<MobilePanel | null>(null);
@@ -77,6 +85,7 @@ export function GamePage({
       <PhaserGame
         onPlaceTower={onPlaceTower}
         onUseAbility={onUseAbility ? (data) => onUseAbility(data.targetX, data.targetY) : undefined}
+        onPing={onPing}
       />
 
       {/* Top-left column: HUD, player list, tech upgrades */}
@@ -100,6 +109,25 @@ export function GamePage({
         overflow: 'hidden',
       }}>
         <WaveInfo onStartWave={onStartWave} />
+        {isSolo && gameSpeed > 1 && (
+          <button
+            onClick={() => setGameSpeed(gameSpeed >= 3 ? 1 : gameSpeed + 1)}
+            style={{
+              pointerEvents: 'auto',
+              padding: '2px 8px',
+              fontSize: 12,
+              fontWeight: 700,
+              background: 'rgba(68, 187, 255, 0.15)',
+              border: '1px solid #44bbff',
+              color: '#44bbff',
+              borderRadius: 4,
+              cursor: 'pointer',
+              alignSelf: 'flex-end',
+            }}
+          >
+            {gameSpeed}x
+          </button>
+        )}
         {showChat && onSendChat && (
           <ChatPanel playerName={playerName || 'Player'} onSendChat={onSendChat} />
         )}
@@ -198,11 +226,31 @@ export function GamePage({
         <AbilityBar playerId={playerId} onUseAbility={onUseAbility} />
       )}
 
+      {/* Spectating banner */}
+      {isSpectating && (
+        <div style={{
+          position: 'absolute', top: 'max(40px, env(safe-area-inset-top, 0px))', left: '50%',
+          transform: 'translateX(-50%)', zIndex: 30,
+          padding: '4px 16px', background: 'rgba(10, 10, 26, 0.9)',
+          border: '1px solid #ffaa44', borderRadius: 6,
+          color: '#ffaa44', fontSize: 13, fontWeight: 700, letterSpacing: 1,
+        }}>
+          SPECTATING
+        </div>
+      )}
+
       {/* Bottom-center: tower build bar */}
-      <TowerBuildBar playerId={playerId} />
+      {!isSpectating && <TowerBuildBar playerId={playerId} />}
 
       {/* Bottom-right: tower info panel */}
-      <TowerInfoPanel playerId={playerId} onUpgrade={onUpgradeTower} onSell={onSellTower} onSetTargeting={onSetTargeting} />
+      <TowerInfoPanel
+        playerId={playerId}
+        onUpgrade={isSpectating ? undefined : onUpgradeTower}
+        onSell={isSpectating ? undefined : onSellTower}
+        onSetTargeting={isSpectating ? undefined : onSetTargeting}
+        onQueueUpgrade={onQueueUpgrade}
+        onCancelQueue={onCancelQueue}
+      />
 
       {/* Centered overlays */}
       <WaveSummary playerId={playerId} />
@@ -211,6 +259,7 @@ export function GamePage({
           onResume={() => setIsPaused(false)}
           onHelp={() => { setIsPaused(false); setShowHelp(true); }}
           onQuit={() => { setIsPaused(false); onQuit(); }}
+          isSolo={isSolo}
         />
       )}
       {showHelp && (

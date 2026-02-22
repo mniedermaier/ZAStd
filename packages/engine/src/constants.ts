@@ -71,6 +71,55 @@ export const BASE_INTEREST_RATE = 0.01;
 export const INTEREST_CAP_BASE = 200;
 export const INTEREST_CAP_PER_WAVE = 20;
 
+// Endless Mode
+export const ENDLESS_BOSS_INTERVAL = 10;
+
+// Challenge Modifiers
+export const CHALLENGE_MODIFIERS: Record<string, { name: string; description: string; scoreMultiplier: number }> = {
+  no_sell:      { name: 'No Sell',       description: "Can't sell towers",                scoreMultiplier: 1.5 },
+  glass_cannon: { name: 'Glass Cannon',  description: 'Start with 10 lives instead of 30', scoreMultiplier: 1.3 },
+  poverty:      { name: 'Poverty',       description: 'Start with 100 gold instead of 200', scoreMultiplier: 1.3 },
+  speed_demon:  { name: 'Speed Demon',   description: 'Enemies move 30% faster',          scoreMultiplier: 1.4 },
+  no_upgrades:  { name: 'No Upgrades',   description: "Can't upgrade towers",             scoreMultiplier: 1.5 },
+};
+
+// Creep Sending for Income
+export interface CreepSendDefinition {
+  type: string;
+  cost: number;
+  incomeBonus: number;
+  unlockWave: number;
+}
+
+export const CREEP_SEND_DEFINITIONS: CreepSendDefinition[] = [
+  { type: 'basic',     cost: 20,  incomeBonus: 8,  unlockWave: 1 },
+  { type: 'fast',      cost: 30,  incomeBonus: 12, unlockWave: 3 },
+  { type: 'tank',      cost: 60,  incomeBonus: 25, unlockWave: 5 },
+  { type: 'armored',   cost: 80,  incomeBonus: 35, unlockWave: 8 },
+  { type: 'flying',    cost: 100, incomeBonus: 45, unlockWave: 10 },
+  { type: 'berserker', cost: 120, incomeBonus: 55, unlockWave: 15 },
+];
+
+// Tutorial
+export const TUTORIAL_WAVES: [string, number][] = [
+  ['basic', 5],
+  ['basic', 8],
+  ['fast', 6],
+  ['basic', 10],
+  ['tank', 3],
+];
+
+export const TUTORIAL_HINTS = [
+  { step: 1, text: 'Place an Arrow Tower on the grid', trigger: 'tower_placed' },
+  { step: 2, text: 'Start the wave by pressing Space or clicking Send Wave', trigger: 'wave_started' },
+  { step: 3, text: 'Upgrade your tower by selecting it and pressing Q', trigger: 'tower_upgraded' },
+  { step: 4, text: 'Build a maze to extend the enemy path', trigger: 'towers_3' },
+  { step: 5, text: "Great job! You're ready for real games!", trigger: 'wave_5_complete' },
+];
+
+// Vote timing
+export const VOTE_TIMEOUT = 30.0;
+
 // Aura caps
 export const MAX_AURA_DAMAGE_MULT = 2.0;
 export const MAX_AURA_SPEED_MULT = 1.5;

@@ -10,7 +10,12 @@ import {
   showReapEffect, showOvergrowthEffect, showManaBomb, showDivineIntervention,
 } from '../effects/ImpactEffect';
 import { showDamageNumber, showGoldGain } from '../effects/DamageNumber';
-import { playTowerAttack, playEnemyDeath } from '../../audio/SoundManager';
+import {
+  playTowerAttack, playEnemyDeath,
+  playAbilityFire, playAbilityIce, playAbilityThunder, playAbilityPoison,
+  playAbilityDeath, playAbilityNature, playAbilityArcane, playAbilityHoly,
+  playPingAlert, playPingHere, playPingHelp, playSynergyActivation,
+} from '../../audio/SoundManager';
 
 const CELL_SIZE = 24;
 
@@ -174,6 +179,14 @@ export class GameScene extends Phaser.Scene {
   private keyS!: Phaser.Input.Keyboard.Key;
   private keyD!: Phaser.Input.Keyboard.Key;
 
+  // --- Ping rendering ---
+  private pingGraphics!: Phaser.GameObjects.Graphics;
+  private pingLabels: Phaser.GameObjects.Text[] = [];
+  private prevPingCount = 0;
+
+  // --- Synergy detection ---
+  private prevTowerSynergies = new Map<string, string[]>();
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -194,6 +207,7 @@ export class GameScene extends Phaser.Scene {
     this.ghostGraphics = this.add.graphics().setDepth(5);
     this.selectionGraphics = this.add.graphics().setDepth(6);
     // Effects (impacts, lightning, numbers) at depth 8-10 (set in effect functions)
+    this.pingGraphics = this.add.graphics().setDepth(15);
 
     // Cache keyboard keys
     if (this.input.keyboard) {
@@ -314,6 +328,22 @@ export class GameScene extends Phaser.Scene {
     if (this.keyA?.isDown) cam.scrollX -= panSpeed * (_delta / 1000);
     if (this.keyD?.isDown) cam.scrollX += panSpeed * (_delta / 1000);
 
+    // Pan to minimap click target
+    const panTarget = useUIStore.getState().panTarget;
+    if (panTarget) {
+      const targetWorldX = panTarget.x * CELL_SIZE;
+      const targetWorldY = panTarget.y * CELL_SIZE;
+      const dx = targetWorldX - (cam.scrollX + cam.width / (2 * cam.zoom));
+      const dy = targetWorldY - (cam.scrollY + cam.height / (2 * cam.zoom));
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) {
+        cam.centerOn(targetWorldX, targetWorldY);
+        useUIStore.getState().clearPanTarget();
+      } else {
+        cam.scrollX += dx * 0.1;
+        cam.scrollY += dy * 0.1;
+      }
+    }
+
     // FPS counter — throttle setText (expensive texture churn) but reposition every frame
     this.fpsUpdateTimer += _delta;
     if (this.fpsUpdateTimer >= 500) {
@@ -332,6 +362,9 @@ export class GameScene extends Phaser.Scene {
       this.starsInitialized = true;
     }
     this.updateStars(_delta);
+
+    // Render pings
+    this.updatePings();
 
     // Only redraw grid/path if snapshot changed
     if (snapshot !== this.lastSnapshot) {
@@ -570,6 +603,27 @@ export class GameScene extends Phaser.Scene {
       if (!snap.towers[id]) this.prevTowerLevels.delete(id);
     }
 
+    // --- Synergy activation detection ---
+    for (const [id, ts] of Object.entries(snap.towers)) {
+      const prevSynergies = this.prevTowerSynergies.get(id) ?? [];
+      const currentSynergies = ts.activeSynergies ?? [];
+      for (const synId of currentSynergies) {
+        if (!prevSynergies.includes(synId)) {
+          // New synergy activated on this tower
+          playSynergyActivation();
+          const cx = ts.x * CELL_SIZE + CELL_SIZE / 2;
+          const cy = ts.y * CELL_SIZE + CELL_SIZE / 2;
+          showUpgradeFlash(this, cx, cy, 0xffdd44);
+          break; // One sound per tick is enough
+        }
+      }
+      this.prevTowerSynergies.set(id, [...currentSynergies]);
+    }
+    // Clean up removed towers from prevTowerSynergies
+    for (const id of this.prevTowerSynergies.keys()) {
+      if (!snap.towers[id]) this.prevTowerSynergies.delete(id);
+    }
+
     // --- Phase 4: Ability VFX detection ---
     for (const [pid, ps] of Object.entries(snap.players)) {
       const prevCd = this.prevAbilityCooldowns.get(pid) ?? 0;
@@ -699,6 +753,18 @@ export class GameScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const cx = cam.worldView.centerX;
     const cy = cam.worldView.centerY;
+
+    // Play governor-specific ability sound
+    switch (governor) {
+      case 'fire': playAbilityFire(); break;
+      case 'ice': playAbilityIce(); break;
+      case 'thunder': playAbilityThunder(); break;
+      case 'poison': playAbilityPoison(); break;
+      case 'death': playAbilityDeath(); break;
+      case 'nature': playAbilityNature(); break;
+      case 'arcane': playAbilityArcane(); break;
+      case 'holy': playAbilityHoly(); break;
+    }
 
     switch (governor) {
       case 'fire':
@@ -2087,6 +2153,23 @@ export class GameScene extends Phaser.Scene {
     const snapshot = useGameStore.getState().snapshot;
     if (!snapshot) return;
 
+    // Ping: alt+click = "here", shift+click = "alert"
+    const altDown = this.input.keyboard?.keys?.[Phaser.Input.Keyboard.KeyCodes.ALT]?.isDown;
+    const shiftDown = this.input.keyboard?.keys?.[Phaser.Input.Keyboard.KeyCodes.SHIFT]?.isDown;
+    if (altDown || shiftDown) {
+      const pingType = shiftDown ? 'alert' : 'here';
+      this.events.emit('ping', { x: cellX, y: cellY, pingType });
+      // Also add locally for immediate feedback
+      useUIStore.getState().addPing({
+        id: crypto.randomUUID(),
+        x: cellX, y: cellY,
+        playerName: 'You',
+        pingType: pingType as 'alert' | 'here' | 'help',
+        time: Date.now(),
+      });
+      return;
+    }
+
     // Ability targeting: click to use point AoE ability
     if (uiStore.abilityTargeting) {
       this.events.emit('use-ability', { targetX: cellX, targetY: cellY });
@@ -2215,6 +2298,80 @@ export class GameScene extends Phaser.Scene {
         cellY * CELL_SIZE + CELL_SIZE / 2,
         stats.range * CELL_SIZE,
       );
+    }
+  }
+
+  // ===== PINGS =====
+
+  private static readonly PING_DURATION = 4000;
+  private static readonly PING_COLORS: Record<string, number> = {
+    alert: 0xff4466,
+    here: 0x44bbff,
+    help: 0xffdd44,
+  };
+
+  private updatePings() {
+    this.pingGraphics.clear();
+    const uiStore = useUIStore.getState();
+    uiStore.clearExpiredPings();
+    const pings = uiStore.pings;
+    const now = Date.now();
+
+    // Play sound for new pings
+    if (pings.length > this.prevPingCount) {
+      const newestPing = pings[pings.length - 1];
+      if (newestPing && now - newestPing.time < 500) {
+        switch (newestPing.pingType) {
+          case 'alert': playPingAlert(); break;
+          case 'here': playPingHere(); break;
+          case 'help': playPingHelp(); break;
+        }
+      }
+    }
+    this.prevPingCount = pings.length;
+
+    // Clean up stale labels
+    while (this.pingLabels.length > pings.length) {
+      this.pingLabels.pop()?.destroy();
+    }
+
+    for (let i = 0; i < pings.length; i++) {
+      const p = pings[i];
+      const elapsed = now - p.time;
+      const progress = elapsed / GameScene.PING_DURATION;
+      if (progress >= 1) continue;
+
+      const cx = p.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = p.y * CELL_SIZE + CELL_SIZE / 2;
+      const color = GameScene.PING_COLORS[p.pingType] ?? 0x44bbff;
+
+      // Pulsing ring: expands from 8 to 20px radius, fading out
+      const alpha = 1 - progress;
+      const radius = 8 + progress * 12;
+      this.pingGraphics.lineStyle(2, color, alpha * 0.8);
+      this.pingGraphics.strokeCircle(cx, cy, radius);
+
+      // Inner dot
+      this.pingGraphics.fillStyle(color, alpha * 0.6);
+      this.pingGraphics.fillCircle(cx, cy, 3);
+
+      // Player name label
+      if (i < this.pingLabels.length) {
+        this.pingLabels[i].setPosition(cx, cy - 16).setAlpha(alpha).setVisible(true);
+        this.pingLabels[i].setText(p.playerName);
+      } else {
+        const label = this.add.text(cx, cy - 16, p.playerName, {
+          fontSize: '8px',
+          color: '#' + color.toString(16).padStart(6, '0'),
+          fontFamily: 'monospace',
+        }).setOrigin(0.5).setDepth(15).setAlpha(alpha);
+        this.pingLabels.push(label);
+      }
+    }
+
+    // Hide unused labels
+    for (let i = pings.length; i < this.pingLabels.length; i++) {
+      this.pingLabels[i].setVisible(false);
     }
   }
 }

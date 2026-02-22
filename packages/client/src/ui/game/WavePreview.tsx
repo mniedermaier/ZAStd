@@ -11,7 +11,6 @@ export function WavePreview() {
   if (!snapshot) return null;
 
   const nextWave = snapshot.waveNumber + 1;
-  if (nextWave > 40) return null;
 
   const playerCount = Object.keys(snapshot.players).length;
   const preview = getWavePreview(nextWave, playerCount);

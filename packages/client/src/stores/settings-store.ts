@@ -7,6 +7,7 @@ interface SettingsStore {
   colorblindMode: boolean;
   showHelp: boolean;
   isPaused: boolean;
+  gameSpeed: number;
 
   setMasterVolume: (v: number) => void;
   setSfxVolume: (v: number) => void;
@@ -15,6 +16,7 @@ interface SettingsStore {
   setShowHelp: (on: boolean) => void;
   setIsPaused: (paused: boolean) => void;
   togglePause: () => void;
+  setGameSpeed: (speed: number) => void;
 }
 
 function loadNumber(key: string, fallback: number): number {
@@ -67,6 +69,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   colorblindMode: loadBool('settings:colorblindMode', false),
   showHelp: false,
   isPaused: false,
+  gameSpeed: loadNumber('settings:gameSpeed', 1),
 
   setMasterVolume: (v) => { persist('settings:masterVolume', v); set({ masterVolume: v }); },
   setSfxVolume: (v) => { persist('settings:sfxVolume', v); set({ sfxVolume: v }); },
@@ -75,4 +78,5 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   setShowHelp: (on) => set({ showHelp: on }),
   setIsPaused: (paused) => set({ isPaused: paused }),
   togglePause: () => set((s) => ({ isPaused: !s.isPaused })),
+  setGameSpeed: (speed) => { persist('settings:gameSpeed', speed); set({ gameSpeed: speed }); },
 }));

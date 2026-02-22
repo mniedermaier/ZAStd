@@ -423,10 +423,74 @@ export class RoomManager {
     });
   }
 
+  sendPing(x: number, y: number, pingType: string): void {
+    this._dispatchAction({
+      type: 'ping',
+      playerId: this.playerId,
+      playerName: this.playerName,
+      x,
+      y,
+      pingType,
+    });
+  }
+
   updateSettings(settings: { mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean }): void {
     this._dispatchAction({
       type: 'update_settings',
       ...settings,
+    });
+  }
+
+  // --- New Batch 2 Actions ---
+
+  sendCreeps(enemyType: string, count: number): void {
+    this._dispatchAction({
+      type: 'send_creeps',
+      playerId: this.playerId,
+      enemyType,
+      count,
+    });
+  }
+
+  queueUpgrade(towerId: string): void {
+    this._dispatchAction({
+      type: 'queue_upgrade',
+      playerId: this.playerId,
+      towerId,
+    });
+  }
+
+  cancelQueuedUpgrade(towerId: string): void {
+    this._dispatchAction({
+      type: 'cancel_queue',
+      playerId: this.playerId,
+      towerId,
+    });
+  }
+
+  startVote(voteType: string, targetId?: string): void {
+    this._dispatchAction({
+      type: 'start_vote',
+      playerId: this.playerId,
+      voteType,
+      targetId,
+    });
+  }
+
+  castVote(voteId: string): void {
+    this._dispatchAction({
+      type: 'cast_vote',
+      playerId: this.playerId,
+      voteId,
+    });
+  }
+
+  setTargeting(towerId: string, mode: string): void {
+    this._dispatchAction({
+      type: 'set_targeting',
+      playerId: this.playerId,
+      towerId,
+      mode,
     });
   }
 
@@ -533,6 +597,17 @@ export class RoomManager {
           useLobbyStore.getState().setAppPhase('lobby');
           useLobbyStore.getState().setInGame(false);
         }
+        if (ev.type === 'ping') {
+          const { useUIStore } = require('../stores/ui-store');
+          useUIStore.getState().addPing({
+            id: `${ev.playerId}-${Date.now()}`,
+            x: ev.x,
+            y: ev.y,
+            playerName: ev.playerName,
+            pingType: ev.pingType,
+            time: Date.now(),
+          });
+        }
       } else if (msg.type === 'action_result') {
         const broadcast = msg as Extract<HostBroadcast, { type: 'action_result' }>;
         if (!broadcast.success && broadcast.playerId === this.playerId) {
@@ -553,6 +628,16 @@ export class RoomManager {
     if (action.type === 'chat') {
       // Re-broadcast chat from client to all other clients
       this.realtime?.sendLobbyMessage(action);
+      return;
+    }
+
+    if (action.type === 'ping') {
+      // Relay ping to all clients as a game_event
+      const { type: _, ...pingData } = action;
+      this.realtime?.broadcastState({
+        type: 'game_event',
+        event: { type: 'ping', ...pingData },
+      });
       return;
     }
 

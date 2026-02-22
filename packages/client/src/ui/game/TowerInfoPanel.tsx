@@ -1,7 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { useUIStore } from '../../stores/ui-store';
 import { useGameStore } from '../../stores/game-store';
-import { UPGRADE_DAMAGE_BOOST, UPGRADE_RANGE_BOOST, UPGRADE_FIRE_RATE_BOOST, UPGRADE_COST_MULTIPLIER } from '@zastd/engine';
+import { UPGRADE_DAMAGE_BOOST, UPGRADE_RANGE_BOOST, UPGRADE_FIRE_RATE_BOOST, UPGRADE_COST_MULTIPLIER, SYNERGY_DEFINITIONS } from '@zastd/engine';
 
 const TARGETING_MODES = [
   { value: 'first', label: 'First', desc: 'Closest to exit' },
@@ -12,12 +12,14 @@ const TARGETING_MODES = [
 
 interface TowerInfoPanelProps {
   playerId: string;
-  onUpgrade: (towerId: string) => void;
-  onSell: (towerId: string) => void;
+  onUpgrade?: (towerId: string) => void;
+  onSell?: (towerId: string) => void;
   onSetTargeting?: (towerId: string, mode: string) => void;
+  onQueueUpgrade?: (towerId: string) => void;
+  onCancelQueue?: (towerId: string) => void;
 }
 
-export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: TowerInfoPanelProps) {
+export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting, onQueueUpgrade, onCancelQueue }: TowerInfoPanelProps) {
   const selectedTowerId = useUIStore((s) => s.selectedTowerId);
   const snapshot = useGameStore((s) => s.snapshot);
   const selectTower = useUIStore((s) => s.selectTower);
@@ -126,6 +128,26 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
     </div>
   ) : null;
 
+  const hasSynergies = tower.activeSynergies && tower.activeSynergies.length > 0;
+  const synergySection = hasSynergies ? (
+    <div style={{ marginBottom: 8, padding: '4px 0', borderTop: '1px solid #333366' }}>
+      <div style={{ fontSize: 9, color: '#ffdd44', textTransform: 'uppercase', marginBottom: 3 }}>Synergies</div>
+      {tower.activeSynergies.map((synId: string) => {
+        const syn = SYNERGY_DEFINITIONS.find(s => s.id === synId);
+        if (!syn) return null;
+        return (
+          <div key={synId} style={{ fontSize: 10, color: '#ffdd44', marginBottom: 2 }}>
+            {syn.name}: {syn.description}
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
+
+  // Queue info
+  const hasQueuedUpgrade = snapshot.upgradeQueue?.some(q => q.towerId === selectedTowerId);
+  const queuedTarget = snapshot.upgradeQueue?.find(q => q.towerId === selectedTowerId)?.targetLevel;
+
   const effectivenessSection = (
     <div style={{ marginBottom: 6, fontSize: 9 }}>
       <span style={{ color: '#44ff88' }}>
@@ -180,22 +202,44 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
     </div>
   ) : null;
 
-  const actionButtons = isOwner ? (
-    <div style={{ display: 'flex', gap: 6 }}>
-      <button
-        onClick={() => onUpgrade(selectedTowerId)}
-        disabled={tower.level >= 4 || !canAffordUpgrade}
-        style={{ flex: 1 }}
-      >
-        {tower.level >= 4 ? 'Max Level' : `Upgrade (${upgradeCost}g)`}
-      </button>
-      <button
-        className="danger"
-        onClick={() => { onSell(selectedTowerId); selectTower(null); }}
-        style={{ flex: 1 }}
-      >
-        Sell
-      </button>
+  const actionButtons = isOwner && onUpgrade && onSell ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {hasQueuedUpgrade && (
+        <div style={{ fontSize: 10, color: '#ffdd44', textAlign: 'center' }}>
+          Queued to Lv.{queuedTarget}
+          {onCancelQueue && (
+            <button
+              onClick={() => onCancelQueue(selectedTowerId)}
+              style={{ marginLeft: 8, fontSize: 9, color: '#ff4466', padding: '1px 6px', background: 'transparent', border: '1px solid #ff4466', borderRadius: 3, cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={(e) => {
+            if (e.shiftKey && onQueueUpgrade) {
+              onQueueUpgrade(selectedTowerId);
+            } else {
+              onUpgrade(selectedTowerId);
+            }
+          }}
+          disabled={tower.level >= 4 || (!canAffordUpgrade && !onQueueUpgrade)}
+          style={{ flex: 1 }}
+          title={onQueueUpgrade ? 'Shift+click to queue' : undefined}
+        >
+          {tower.level >= 4 ? 'Max Level' : `Upgrade (${upgradeCost}g)`}
+        </button>
+        <button
+          className="danger"
+          onClick={() => { onSell(selectedTowerId); selectTower(null); }}
+          style={{ flex: 1 }}
+        >
+          Sell
+        </button>
+      </div>
     </div>
   ) : null;
 
@@ -246,6 +290,7 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
             {statsSection}
             {targetingSection}
             {abilitiesSection}
+            {synergySection}
             {effectivenessSection}
           </div>
 
@@ -277,6 +322,7 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting }: 
       {headerSection}
       {statsSection}
       {abilitiesSection}
+      {synergySection}
       {effectivenessSection}
       {targetingSection}
       {upgradePreviewSection}

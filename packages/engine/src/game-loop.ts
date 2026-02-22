@@ -9,8 +9,9 @@ import {
   WAVE_BASE_INCOME, WAVE_INCOME_PER_WAVE,
   MAX_AURA_DAMAGE_MULT, MAX_AURA_SPEED_MULT,
   CHAIN_INITIAL_MULT, CHAIN_DECAY_MULT, SPLASH_DAMAGE_MULT, CHAIN_RANGE,
-  ABILITY_DEFINITIONS, SYNERGY_DEFINITIONS,
+  ABILITY_DEFINITIONS, SYNERGY_DEFINITIONS, CREEP_SEND_DEFINITIONS,
 } from './constants';
+import type { ReplayRecorder } from './replay';
 
 export interface GameEvent {
   type: string;
@@ -27,6 +28,8 @@ export class GameLoop {
   pendingEvents: GameEvent[] = [];
   tickRate = TICK_RATE;
   tickInterval = 1.0 / TICK_RATE;
+  speedMultiplier = 1;
+  replayRecorder: ReplayRecorder | null = null;
 
   private _gameEndTime: number | null = null;
   private _intervalId: ReturnType<typeof setInterval> | null = null;
@@ -34,6 +37,10 @@ export class GameLoop {
 
   constructor(gameState: GameState) {
     this.gameState = gameState;
+  }
+
+  setSpeed(mult: number): void {
+    this.speedMultiplier = Math.max(1, Math.min(3, mult));
   }
 
   /** Start the game loop. Returns a function to stop it. */
@@ -65,6 +72,7 @@ export class GameLoop {
   }
 
   tick(deltaTime: number): void {
+    deltaTime *= this.speedMultiplier;
     const currentTime = Date.now() / 1000;
 
     // Emit path_changed if path was modified
@@ -112,6 +120,29 @@ export class GameLoop {
     // Aura effects
     this._applyAuraEffects();
 
+    // Process upgrade queue
+    this.gameState.processUpgradeQueue();
+
+    // Resolve votes
+    const voteResults = this.gameState.resolveVotes(currentTime);
+    for (const result of voteResults) {
+      if (result.passed) {
+        if (result.type === 'send_early') {
+          // Start next wave if not already active
+          const waveActive = this.gameState.currentWave?.started && !this.gameState.currentWave.completed;
+          if (!waveActive) {
+            this.gameState.startNextWave();
+            this.pendingEvents.push({ type: 'vote_passed', voteType: result.type });
+          }
+        } else if (result.type === 'kick' && result.targetId) {
+          this.gameState.removePlayer(result.targetId);
+          this.pendingEvents.push({ type: 'vote_passed', voteType: result.type, targetId: result.targetId });
+        }
+      } else {
+        this.pendingEvents.push({ type: 'vote_failed', voteType: result.type, targetId: result.targetId });
+      }
+    }
+
     // Process abilities
     this._processAbilities(currentTime);
 
@@ -139,10 +170,18 @@ export class GameLoop {
     if (gameOver || victory) {
       if (this._gameEndTime === null) {
         this._gameEndTime = currentTime;
+        const stats = this._buildGameStats();
+
+        // Finalize replay
+        if (this.replayRecorder) {
+          this.replayRecorder.finalize(victory ? 'victory' : 'defeat');
+        }
+
         this.pendingEvents.push({
           type: 'game_over',
           victory,
-          stats: this._buildGameStats(),
+          stats,
+          replayData: this.replayRecorder?.getData() ?? null,
         });
       } else if (currentTime - this._gameEndTime >= 10.0) {
         this.gameState.resetGame();
@@ -347,7 +386,10 @@ export class GameLoop {
       }
 
       // Move
-      const speed = enemy.getEffectiveSpeed();
+      let speed = enemy.getEffectiveSpeed();
+      if (this.gameState.activeModifiers.includes('speed_demon')) {
+        speed *= 1.3;
+      }
       const path = enemy.isFlying ? this.gameState.flyingPath : this.gameState.sharedPath;
       const [newX, newY, newIdx, reachedEnd] = updateEnemyPosition(
         enemy.x, enemy.y, enemy.pathIndex, path, speed, deltaTime,
@@ -357,7 +399,9 @@ export class GameLoop {
       enemy.pathIndex = newIdx;
 
       if (reachedEnd) {
-        this.gameState.takeSharedDamage(enemy.stats.damage);
+        if (!enemy.isSentCreep) {
+          this.gameState.takeSharedDamage(enemy.stats.damage);
+        }
         enemiesToRemove.push(enemyId);
       }
     }
@@ -367,6 +411,15 @@ export class GameLoop {
   }
 
   private _onEnemyKilled(enemy: EnemyInstance, enemiesToSpawn: EnemyInstance[]): void {
+    // Award income bonus for killing sent creeps
+    if (enemy.isSentCreep && enemy.sentByPlayerId) {
+      const sender = this.gameState.players.get(enemy.sentByPlayerId);
+      if (sender) {
+        const def = CREEP_SEND_DEFINITIONS.find(d => d.type === enemy.enemyType);
+        if (def) sender.addMoney(def.incomeBonus);
+      }
+    }
+
     if (enemy.stats.splitInto && enemy.stats.splitCount > 0) {
       const splitType = enemy.stats.splitInto as EnemyType;
       if (!Object.values(EnemyType).includes(splitType)) return;
@@ -654,6 +707,11 @@ export class GameLoop {
     });
 
     this.gameState.nextWaveAutoStartTime = Date.now() / 1000 + this.gameState.autoStartDelay;
+
+    // Record replay frame
+    if (this.replayRecorder) {
+      this.replayRecorder.recordFrame(waveNum, this.gameState.serialize());
+    }
   }
 
   private _buildGameStats(): Record<string, unknown> {

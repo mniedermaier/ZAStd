@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 export default defineConfig({
+  define: {
+    __BUILD_DATE__: JSON.stringify(
+      new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, '')
+    ),
+  },
   plugins: [react()],
   resolve: {
     alias: {
@@ -16,7 +21,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          phaser: ['phaser'],
           react: ['react', 'react-dom'],
         },
       },

@@ -8,8 +8,16 @@ export type AppPhase =
   | 'join_by_code'
   | 'solo_lobby'
   | 'solo_game'
+  | 'daily_lobby'
+  | 'daily_game'
+  | 'endless_lobby'
+  | 'endless_game'
   | 'lobby'
-  | 'game';
+  | 'game'
+  | 'tutorial_lobby'
+  | 'tutorial_game'
+  | 'replay_viewer'
+  | 'spectating';
 
 interface LobbyStore {
   playerName: string;
@@ -25,6 +33,7 @@ interface LobbyStore {
   isLoading: boolean;
   loadingMessage: string;
   isReconnecting: boolean;
+  isSpectating: boolean;
 
   setPlayerName: (name: string) => void;
   setRoomId: (id: string | null) => void;
@@ -36,6 +45,7 @@ interface LobbyStore {
   setJoinError: (error: string | null) => void;
   setLoading: (loading: boolean, message?: string) => void;
   setReconnecting: (v: boolean) => void;
+  setSpectating: (v: boolean) => void;
 }
 
 export const useLobbyStore = create<LobbyStore>((set) => ({
@@ -51,6 +61,7 @@ export const useLobbyStore = create<LobbyStore>((set) => ({
   isLoading: false,
   loadingMessage: '',
   isReconnecting: false,
+  isSpectating: false,
 
   setPlayerName: (name) => {
     localStorage.setItem('zastd-player-name', name);
@@ -65,4 +76,5 @@ export const useLobbyStore = create<LobbyStore>((set) => ({
   setJoinError: (error) => set({ joinError: error }),
   setLoading: (loading, message = '') => set({ isLoading: loading, loadingMessage: message }),
   setReconnecting: (v) => set({ isReconnecting: v }),
+  setSpectating: (v) => set({ isSpectating: v }),
 }));

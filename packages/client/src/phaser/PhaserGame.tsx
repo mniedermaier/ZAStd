@@ -6,9 +6,10 @@ import type { GameScene } from './scenes/GameScene';
 interface PhaserGameProps {
   onPlaceTower?: (data: { x: number; y: number; towerType: string }) => void;
   onUseAbility?: (data: { targetX: number; targetY: number }) => void;
+  onPing?: (data: { x: number; y: number; pingType: string }) => void;
 }
 
-export function PhaserGame({ onPlaceTower, onUseAbility }: PhaserGameProps) {
+export function PhaserGame({ onPlaceTower, onUseAbility, onPing }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
 
@@ -28,6 +29,9 @@ export function PhaserGame({ onPlaceTower, onUseAbility }: PhaserGameProps) {
         });
         scene.events.on('use-ability', (data: { targetX: number; targetY: number }) => {
           onUseAbility?.(data);
+        });
+        scene.events.on('ping', (data: { x: number; y: number; pingType: string }) => {
+          onPing?.(data);
         });
       }
     });

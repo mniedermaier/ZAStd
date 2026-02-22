@@ -175,6 +175,8 @@ export interface EnemySnapshot {
   stunEndTime: number;
   armorDebuff: number;
   armorDebuffEndTime: number;
+  isSentCreep?: boolean;
+  sentByPlayerId?: string | null;
   stats: {
     speed: number;
     reward: number;
@@ -246,6 +248,12 @@ export interface GameStateSnapshot {
     difficulty: string;
     moneySharing: boolean;
   };
+  endlessMode?: boolean;
+  activeModifiers?: string[];
+  scoreMultiplier?: number;
+  upgradeQueue?: Array<{ playerId: string; towerId: string; targetLevel: number }>;
+  activeVotes?: Array<{ voteId: string; type: string; targetId?: string; voters: string[]; startTime: number }>;
+  isTutorial?: boolean;
   map: {
     width: number;
     height: number;

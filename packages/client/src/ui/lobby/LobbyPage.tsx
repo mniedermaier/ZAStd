@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GOVERNORS } from '@zastd/engine';
+import { GOVERNORS, CHALLENGE_MODIFIERS } from '@zastd/engine';
 import { GovernorCard } from './GovernorCard';
 import { useLobbyStore } from '../../stores/lobby-store';
 
@@ -15,11 +15,17 @@ interface LobbyPageProps {
   isHost: boolean;
   roomCode?: string;
   onLeave?: () => void;
+  dailyInfo?: { dateString: string; featuredGovernor: string };
+  endlessMode?: boolean;
+  showModifiers?: boolean;
+  selectedModifiers?: string[];
+  onUpdateModifiers?: (modifiers: string[]) => void;
 }
 
 export function LobbyPage({
   playerId, players, onSelectGovernor, onReady, onStartGame,
-  onUpdateSettings, settings, allReady, isHost, roomCode, onLeave,
+  onUpdateSettings, settings, allReady, isHost, roomCode, onLeave, dailyInfo,
+  endlessMode, showModifiers, selectedModifiers = [], onUpdateModifiers,
 }: LobbyPageProps) {
   const { playerName, setPlayerName } = useLobbyStore();
   const me = players[playerId];
@@ -37,6 +43,45 @@ export function LobbyPage({
       overflow: 'auto',
     }}>
       <h1 style={{ fontSize: 28, color: '#44bbff', letterSpacing: 2 }}>ZAStd Tower Defense</h1>
+
+      {dailyInfo && (
+        <div style={{
+          padding: '10px 20px',
+          background: 'rgba(255, 170, 68, 0.1)',
+          border: '1px solid #ffaa44',
+          borderRadius: 8,
+          textAlign: 'center',
+        }}>
+          <div style={{ color: '#ffaa44', fontSize: 16, fontWeight: 700 }}>
+            Daily Challenge — {dailyInfo.dateString}
+          </div>
+          <div style={{ color: '#aa8844', fontSize: 12, marginTop: 4 }}>
+            Featured Governor: {GOVERNORS[dailyInfo.featuredGovernor]?.name ?? dailyInfo.featuredGovernor}
+            {' '}&bull;{' '}
+            {settings.mapSize} / {settings.mapLayout} / {settings.difficulty}
+          </div>
+          <div style={{ color: '#887755', fontSize: 10, marginTop: 2 }}>
+            Settings locked — same seed for everyone
+          </div>
+        </div>
+      )}
+
+      {endlessMode && (
+        <div style={{
+          padding: '8px 20px',
+          background: 'rgba(204, 68, 255, 0.1)',
+          border: '1px solid #cc44ff',
+          borderRadius: 8,
+          textAlign: 'center',
+        }}>
+          <div style={{ color: '#cc44ff', fontSize: 16, fontWeight: 700 }}>
+            Endless Mode
+          </div>
+          <div style={{ color: '#9944aa', fontSize: 11, marginTop: 2 }}>
+            No wave limit — survive as long as you can
+          </div>
+        </div>
+      )}
 
       {roomCode && (
         <div style={{
@@ -142,6 +187,44 @@ export function LobbyPage({
         </div>
       )}
 
+      {/* Challenge Modifiers */}
+      {showModifiers && onUpdateModifiers && (
+        <div style={{
+          padding: 12,
+          background: 'rgba(26, 26, 58, 0.5)',
+          borderRadius: 8,
+          border: '1px solid #333366',
+          maxWidth: 400,
+          width: '100%',
+        }}>
+          <h3 style={{ color: '#8888aa', marginBottom: 8, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }}>
+            Challenge Modifiers
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {Object.entries(CHALLENGE_MODIFIERS).map(([id, mod]) => (
+              <label key={id} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 12, color: '#e0e0f0', cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={selectedModifiers.includes(id)}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? [...selectedModifiers, id]
+                      : selectedModifiers.filter(m => m !== id);
+                    onUpdateModifiers(next);
+                  }}
+                />
+                <span>{mod.name}</span>
+                <span style={{ color: '#8888aa', fontSize: 10, flex: 1 }}>{mod.description}</span>
+                <span style={{ color: '#ffaa44', fontSize: 10, fontWeight: 600 }}>{mod.scoreMultiplier}x</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Player list */}
       <div style={{ width: '100%', maxWidth: 400 }}>
         <h3 style={{ color: '#8888aa', marginBottom: 8, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -195,7 +278,7 @@ export function LobbyPage({
             onClick={onLeave}
             style={{ padding: '10px 24px', fontSize: 15 }}
           >
-            Leave Room
+            {dailyInfo ? 'Back' : 'Leave Room'}
           </button>
         )}
         <button
@@ -205,7 +288,7 @@ export function LobbyPage({
         >
           {me?.ready ? 'Unready' : 'Ready'}
         </button>
-        {isHost && (
+        {(isHost || dailyInfo) && (
           <button
             onClick={onStartGame}
             className="primary"

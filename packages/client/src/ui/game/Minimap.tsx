@@ -1,6 +1,7 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { useGameStore } from '../../stores/game-store';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useUIStore } from '../../stores/ui-store';
 
 const MINIMAP_W = 160;
 const MINIMAP_H = 100;
@@ -79,7 +80,49 @@ export function Minimap() {
       ctx.arc(enemy.x * scaleX, enemy.y * scaleY, 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // Selected tower range circle
+    const selectedTowerId = useUIStore.getState().selectedTowerId;
+    if (selectedTowerId) {
+      const tower = snapshot.towers[selectedTowerId];
+      if (tower) {
+        ctx.strokeStyle = 'rgba(68, 187, 255, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(tower.x * scaleX, tower.y * scaleY, tower.stats.range * scaleX, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Ping markers
+    const pings = useUIStore.getState().pings;
+    const now = Date.now();
+    const PING_COLORS: Record<string, string> = { alert: '#ff4466', here: '#44bbff', help: '#ffdd44' };
+    for (const ping of pings) {
+      const age = now - ping.time;
+      if (age > 4000) continue;
+      const pulse = 1 + 0.5 * Math.sin(age / 200);
+      const alpha = Math.max(0, 1 - age / 4000);
+      ctx.fillStyle = PING_COLORS[ping.pingType] || '#ffffff';
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(ping.x * scaleX, ping.y * scaleY, 3 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
   }, [snapshot, colorblindMode]);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!snapshot) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const worldX = (clickX / MINIMAP_W) * snapshot.map.width;
+    const worldY = (clickY / MINIMAP_H) * snapshot.map.height;
+    useUIStore.getState().setPanTarget(worldX, worldY);
+  }, [snapshot]);
 
   if (!snapshot) return null;
 
@@ -89,13 +132,15 @@ export function Minimap() {
       border: '1px solid #333366',
       overflow: 'hidden',
       opacity: 0.85,
-      pointerEvents: 'none',
+      pointerEvents: 'auto',
+      cursor: 'pointer',
     }}>
       <canvas
         ref={canvasRef}
         width={MINIMAP_W}
         height={MINIMAP_H}
         style={{ display: 'block' }}
+        onClick={handleClick}
       />
     </div>
   );

@@ -12,7 +12,11 @@ import {
   SYNERGY_DEFINITIONS, VALID_MAP_LAYOUTS,
   SPIRAL_WAYPOINTS, SPIRAL_SPAWN_END,
   CROSSROADS_WAYPOINTS, CROSSROADS_SPAWN_END,
+  CHALLENGE_MODIFIERS,
+  CREEP_SEND_DEFINITIONS, TUTORIAL_WAVES, VOTE_TIMEOUT,
+  MAX_TOWER_LEVEL,
 } from './constants';
+import { EnemyType } from './types';
 
 let _uuid = 0;
 function uuid(): string {
@@ -27,6 +31,11 @@ export class GameState {
   mapLayout = 'classic';
   difficulty = 'normal';
   moneySharing = true;
+  endlessMode = false;
+  activeModifiers: string[] = [];
+  isTutorial = false;
+  upgradeQueue: Array<{ playerId: string; towerId: string; targetLevel: number }> = [];
+  activeVotes = new Map<string, { type: 'send_early' | 'kick'; targetId?: string; voters: Set<string>; startTime: number }>();
 
   phase: GamePhase = GamePhase.Lobby;
   sharedLives = STARTING_LIVES;
@@ -40,6 +49,7 @@ export class GameState {
 
   currentWave: Wave | null = null;
   waveNumber = 0;
+  waveMutatorOverrides: Record<number, string[]> | null = null;
 
   nextWaveAutoStartTime: number | null = null;
   autoStartDelay = AUTO_START_DELAY;
@@ -103,6 +113,23 @@ export class GameState {
 
   get activeMutators(): string[] {
     return this.currentWave?.properties?.mutators ?? [];
+  }
+
+  get scoreMultiplier(): number {
+    let mult = 1.0;
+    for (const mod of this.activeModifiers) {
+      const def = CHALLENGE_MODIFIERS[mod];
+      if (def) mult *= def.scoreMultiplier;
+    }
+    return Math.round(mult * 100) / 100;
+  }
+
+  canSellTower(): boolean {
+    return !this.activeModifiers.includes('no_sell');
+  }
+
+  canUpgradeTower(): boolean {
+    return !this.activeModifiers.includes('no_upgrades');
   }
 
   get sharedPath(): Path {
@@ -266,6 +293,7 @@ export class GameState {
   }
 
   sellTower(playerId: string, towerId: string): boolean {
+    if (!this.canSellTower()) return false;
     const tower = this.towers.get(towerId);
     if (!tower || tower.ownerId !== playerId) return false;
     const player = this.players.get(playerId);
@@ -293,6 +321,7 @@ export class GameState {
   }
 
   upgradeTower(playerId: string, towerId: string): boolean {
+    if (!this.canUpgradeTower()) return false;
     const tower = this.towers.get(towerId);
     if (!tower || tower.ownerId !== playerId || !tower.canUpgrade()) return false;
     const player = this.players.get(playerId);
@@ -365,7 +394,16 @@ export class GameState {
   // Wave & Enemy Management
   startNextWave(): Wave {
     this.waveNumber++;
-    this.currentWave = generateWave(this.waveNumber, this.players.size);
+
+    if (this.isTutorial && this.waveNumber <= TUTORIAL_WAVES.length) {
+      const [type, count] = TUTORIAL_WAVES[this.waveNumber - 1];
+      const enemies: [EnemyType, number][] = [[type as EnemyType, count]];
+      this.currentWave = new Wave(this.waveNumber, enemies, { name: `Tutorial ${this.waveNumber}`, tags: ['tutorial'] });
+    } else {
+      const forcedMutators = this.waveMutatorOverrides?.[this.waveNumber];
+      this.currentWave = generateWave(this.waveNumber, this.players.size, forcedMutators ? { forcedMutators } : undefined);
+    }
+
     this.currentWave.started = true;
     this.currentWave.lastSpawnTime = Date.now() / 1000;
     this.phase = GamePhase.WaveActive;
@@ -487,11 +525,124 @@ export class GameState {
   }
 
   checkVictory(): boolean {
-    if (this.waveNumber >= VICTORY_WAVE && this.enemies.size === 0) {
+    if (this.endlessMode) return false;
+    const victoryWave = this.isTutorial ? 5 : VICTORY_WAVE;
+    if (this.waveNumber >= victoryWave && this.enemies.size === 0) {
       this.phase = GamePhase.Victory;
       return true;
     }
     return false;
+  }
+
+  // --- Creep Sending ---
+  sendCreeps(playerId: string, enemyType: string, count: number): boolean {
+    if (this.phase !== GamePhase.WaveActive && this.phase !== GamePhase.Playing && this.phase !== GamePhase.WaveComplete) return false;
+    const player = this.players.get(playerId);
+    if (!player) return false;
+
+    const def = CREEP_SEND_DEFINITIONS.find(d => d.type === enemyType);
+    if (!def) return false;
+    if (this.waveNumber < def.unlockWave) return false;
+
+    const totalCost = def.cost * count;
+    if (!player.spendMoney(totalCost)) return false;
+
+    const [spawnX, spawnY] = this.sharedPath.getSpawnPosition();
+    for (let i = 0; i < count; i++) {
+      const enemyId = uuid();
+      const ds = this.difficultyScaling;
+      const enemy = createEnemy(enemyType as EnemyType, enemyId, spawnX, spawnY, this.waveNumber, this.pathVersion, ds.healthMult, ds.speedMult);
+      enemy.isSentCreep = true;
+      enemy.sentByPlayerId = playerId;
+      this.enemies.set(enemyId, enemy);
+    }
+    return true;
+  }
+
+  // --- Upgrade Queue ---
+  queueUpgrade(playerId: string, towerId: string): boolean {
+    if (!this.canUpgradeTower()) return false;
+    const tower = this.towers.get(towerId);
+    if (!tower || tower.ownerId !== playerId) return false;
+
+    // Calculate target level
+    const existing = this.upgradeQueue.filter(q => q.towerId === towerId);
+    const currentMaxTarget = existing.length > 0
+      ? Math.max(...existing.map(q => q.targetLevel))
+      : tower.level;
+    const targetLevel = currentMaxTarget + 1;
+    if (targetLevel > MAX_TOWER_LEVEL) return false;
+
+    this.upgradeQueue.push({ playerId, towerId, targetLevel });
+    return true;
+  }
+
+  cancelQueuedUpgrade(playerId: string, towerId: string): boolean {
+    const idx = this.upgradeQueue.findIndex(q => q.playerId === playerId && q.towerId === towerId);
+    if (idx === -1) return false;
+    this.upgradeQueue.splice(idx, 1);
+    return true;
+  }
+
+  processUpgradeQueue(): void {
+    const toRemove: number[] = [];
+    for (let i = 0; i < this.upgradeQueue.length; i++) {
+      const entry = this.upgradeQueue[i];
+      const tower = this.towers.get(entry.towerId);
+      if (!tower) { toRemove.push(i); continue; }
+      if (tower.level >= entry.targetLevel) { toRemove.push(i); continue; }
+
+      const player = this.players.get(entry.playerId);
+      if (!player) { toRemove.push(i); continue; }
+
+      const cost = tower.getUpgradeCost();
+      if (player.money >= cost && tower.canUpgrade()) {
+        player.spendMoney(cost);
+        tower.upgrade();
+        toRemove.push(i);
+      }
+    }
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      this.upgradeQueue.splice(toRemove[i], 1);
+    }
+  }
+
+  // --- Voting System ---
+  startVote(playerId: string, type: 'send_early' | 'kick', targetId?: string): string | null {
+    // Don't allow duplicate active votes of same type
+    for (const [, vote] of this.activeVotes) {
+      if (vote.type === type && vote.targetId === targetId) return null;
+    }
+    const voteId = uuid();
+    const voters = new Set<string>();
+    voters.add(playerId);
+    this.activeVotes.set(voteId, { type, targetId, voters, startTime: Date.now() / 1000 });
+    return voteId;
+  }
+
+  castVote(playerId: string, voteId: string): boolean {
+    const vote = this.activeVotes.get(voteId);
+    if (!vote) return false;
+    if (vote.voters.has(playerId)) return false;
+    vote.voters.add(playerId);
+    return true;
+  }
+
+  resolveVotes(currentTime: number): Array<{ voteId: string; passed: boolean; type: string; targetId?: string }> {
+    const results: Array<{ voteId: string; passed: boolean; type: string; targetId?: string }> = [];
+    const playerCount = this.players.size;
+    if (playerCount === 0) return results;
+
+    for (const [voteId, vote] of this.activeVotes) {
+      const majority = vote.voters.size > playerCount / 2;
+      const expired = currentTime - vote.startTime >= VOTE_TIMEOUT;
+
+      if (majority || expired) {
+        results.push({ voteId, passed: majority, type: vote.type, targetId: vote.targetId });
+        this.activeVotes.delete(voteId);
+      }
+    }
+    return results;
   }
 
   resetGame(): void {
@@ -501,6 +652,11 @@ export class GameState {
     this.nextWaveAutoStartTime = null;
     this.lastManualWaveStartTime = null;
     this.sharedLives = STARTING_LIVES;
+    this.endlessMode = false;
+    this.isTutorial = false;
+    this.activeModifiers = [];
+    this.upgradeQueue = [];
+    this.activeVotes.clear();
     this.towers.clear();
     this.projectiles.clear();
     this.enemies.clear();
@@ -516,6 +672,17 @@ export class GameState {
       player.governor = null;
       player.techUpgrades = {};
       player.recalculateBonuses();
+    }
+  }
+
+  applyModifiers(): void {
+    if (this.activeModifiers.includes('glass_cannon')) {
+      this.sharedLives = 10;
+    }
+    if (this.activeModifiers.includes('poverty')) {
+      for (const player of this.players.values()) {
+        player.money = 100;
+      }
     }
   }
 
@@ -558,6 +725,16 @@ export class GameState {
         difficulty: this.difficulty,
         moneySharing: this.moneySharing,
       },
+      endlessMode: this.endlessMode,
+      activeModifiers: this.activeModifiers,
+      scoreMultiplier: this.scoreMultiplier,
+      upgradeQueue: this.upgradeQueue.length > 0 ? [...this.upgradeQueue] : undefined,
+      activeVotes: this.activeVotes.size > 0
+        ? [...this.activeVotes.entries()].map(([voteId, v]) => ({
+          voteId, type: v.type, targetId: v.targetId, voters: [...v.voters], startTime: v.startTime,
+        }))
+        : undefined,
+      isTutorial: this.isTutorial || undefined,
       map: {
         width: this.gridWidth,
         height: this.gridHeight,

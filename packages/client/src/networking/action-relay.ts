@@ -65,8 +65,41 @@ export function processAction(gameState: GameState, action: ClientAction): { suc
       return used ? { success: true } : { success: false, message: 'Ability not ready' };
     }
 
+    case 'send_creeps': {
+      const sent = gameState.sendCreeps(action.playerId, action.enemyType, action.count);
+      return sent ? { success: true } : { success: false, message: 'Cannot send creeps' };
+    }
+
+    case 'queue_upgrade': {
+      const queued = gameState.queueUpgrade(action.playerId, action.towerId);
+      return queued ? { success: true } : { success: false, message: 'Cannot queue upgrade' };
+    }
+
+    case 'cancel_queue': {
+      const cancelled = gameState.cancelQueuedUpgrade(action.playerId, action.towerId);
+      return cancelled ? { success: true } : { success: false, message: 'No queued upgrade' };
+    }
+
+    case 'start_vote': {
+      const voteId = gameState.startVote(action.playerId, action.voteType as 'send_early' | 'kick', action.targetId);
+      return voteId ? { success: true, message: voteId } : { success: false, message: 'Vote already active' };
+    }
+
+    case 'cast_vote': {
+      const voted = gameState.castVote(action.playerId, action.voteId);
+      return voted ? { success: true } : { success: false, message: 'Cannot cast vote' };
+    }
+
+    case 'set_targeting': {
+      const { TargetingMode } = require('@zastd/engine');
+      gameState.setTowerTargeting(action.playerId, action.towerId, action.mode as any);
+      return { success: true };
+    }
+
     case 'chat':
     case 'join_request':
+    case 'spectate_request':
+    case 'ping':
       // Handled separately by room-manager, not via action-relay
       return { success: true };
 

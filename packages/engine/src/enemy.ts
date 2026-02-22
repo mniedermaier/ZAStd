@@ -4,6 +4,7 @@ import {
   DEFAULT_SPAWN_INTERVAL, DAMAGE_TYPE_PHYSICAL, DAMAGE_TYPE_MAGIC,
   POISON_ANTI_HEAL, ARMOR_DEBUFF_DURATION,
   MUTATOR_START_WAVE, MAX_MUTATORS_PER_WAVE, ALL_MUTATOR_TYPES,
+  ENDLESS_BOSS_INTERVAL,
 } from './constants';
 import type { WaveMutatorType } from './types';
 
@@ -44,6 +45,8 @@ export class EnemyInstance {
   armorDebuff = 0;
   armorDebuffEndTime = 0;
   hitsTaken = 0;
+  isSentCreep = false;
+  sentByPlayerId: string | null = null;
 
   constructor(
     enemyId: string,
@@ -88,6 +91,8 @@ export class EnemyInstance {
       stunEndTime: this.stunEndTime,
       armorDebuff: this.armorDebuff,
       armorDebuffEndTime: this.armorDebuffEndTime,
+      isSentCreep: this.isSentCreep || undefined,
+      sentByPlayerId: this.sentByPlayerId,
       stats: {
         speed: this.stats.speed,
         reward: this.stats.reward,
@@ -226,7 +231,7 @@ export class Wave {
   }
 }
 
-export function generateWave(waveNumber: number, playerCount: number): Wave {
+export function generateWave(waveNumber: number, playerCount: number, options?: { forcedMutators?: string[] }): Wave {
   const diffMult = 1 + waveNumber * DIFFICULTY_MULTIPLIER_PER_WAVE;
   const playerMult = 1 + Math.max(0, playerCount - 1) * PLAYER_MULTIPLIER_SCALING;
   const totalMult = diffMult * playerMult;
@@ -273,13 +278,27 @@ export function generateWave(waveNumber: number, playerCount: number): Wave {
     enemies.push([EnemyType.Swarm, Math.floor(15 * totalMult)]);
     props.name = 'Final Stand';
     props.tags = ['boss', 'final'];
-  } else if (waveNumber % 10 === 0) {
-    // Fallback for any future boss waves beyond 40
-    enemies.push([EnemyType.Boss, Math.max(1, Math.floor(waveNumber / 10))]);
+  } else if (waveNumber % ENDLESS_BOSS_INTERVAL === 0) {
+    // Boss waves: 10, 20, 30, 40, and every 10 waves in endless
+    const bossCount = Math.max(1, Math.floor(waveNumber / 10));
+    enemies.push([EnemyType.Boss, bossCount]);
     enemies.push([EnemyType.Tank, Math.floor(5 * totalMult)]);
     enemies.push([EnemyType.Armored, Math.floor(4 * totalMult)]);
     enemies.push([EnemyType.Healer, Math.floor(3 * totalMult)]);
-    props.name = `Boss Wave ${waveNumber}`;
+    if (waveNumber > 40) {
+      enemies.push([EnemyType.Flying, Math.floor(6 * totalMult)]);
+      enemies.push([EnemyType.Berserker, Math.floor(5 * totalMult)]);
+      enemies.push([EnemyType.Splitter, Math.floor(4 * totalMult)]);
+    }
+    if (waveNumber >= 70) {
+      enemies.push([EnemyType.MagicResist, Math.floor(6 * totalMult)]);
+      enemies.push([EnemyType.Swarm, Math.floor(10 * totalMult)]);
+    }
+    const bossNames: Record<number, string> = {
+      50: 'The Eternal', 60: 'Doom Herald', 70: 'Abyssal Lord',
+      80: 'World Breaker', 90: 'Infinity', 100: 'The Omega',
+    };
+    props.name = bossNames[waveNumber] || `Boss Wave ${waveNumber}`;
     props.tags = ['boss'];
   } else if (waveNumber === 1) {
     enemies.push([EnemyType.Basic, Math.max(8, Math.floor(8 * playerMult))]);
@@ -447,26 +466,58 @@ export function generateWave(waveNumber: number, playerCount: number): Wave {
     props.name = 'The Gauntlet';
     props.tags = ['splitter', 'tank', 'armored'];
   } else {
-    // Generic scaling
+    // Generic scaling — enhanced variety for endless waves
     const base = Math.floor(8 * totalMult);
     enemies.push([EnemyType.Basic, base]);
     if (waveNumber > 5) enemies.push([EnemyType.Fast, Math.floor(4 * totalMult)]);
     if (waveNumber > 10) enemies.push([EnemyType.Armored, Math.floor(3 * totalMult)]);
+    if (waveNumber > 40) {
+      enemies.push([EnemyType.Splitter, Math.floor(3 * totalMult)]);
+      enemies.push([EnemyType.Tank, Math.floor(2 * totalMult)]);
+      enemies.push([EnemyType.Flying, Math.floor(3 * totalMult)]);
+    }
+    if (waveNumber > 50) {
+      enemies.push([EnemyType.Berserker, Math.floor(4 * totalMult)]);
+      enemies.push([EnemyType.Healer, Math.floor(2 * totalMult)]);
+    }
+    if (waveNumber > 60) {
+      enemies.push([EnemyType.MagicResist, Math.floor(3 * totalMult)]);
+      enemies.push([EnemyType.Swarm, Math.floor(8 * totalMult)]);
+    }
+    // Named endless milestone waves
+    const milestoneNames: Record<number, string> = {
+      41: 'Beyond the Veil', 42: 'Relentless', 45: 'Undying Horde',
+      55: 'Infernal March', 65: 'Eternal Night', 75: 'The Abyss',
+      85: 'Shattered Realm', 95: 'Endgame',
+    };
+    if (milestoneNames[waveNumber]) {
+      props.name = milestoneNames[waveNumber];
+    }
     props.tags = ['mixed'];
   }
 
   // Roll mutators for non-boss waves >= MUTATOR_START_WAVE
   const isBoss = waveNumber % 10 === 0;
   if (!isBoss && waveNumber >= MUTATOR_START_WAVE) {
-    const mutatorCount = Math.floor(Math.random() * (MAX_MUTATORS_PER_WAVE + 1)); // 0, 1, or 2
-    if (mutatorCount > 0) {
-      const available = [...ALL_MUTATOR_TYPES];
-      const chosen: WaveMutatorType[] = [];
-      for (let i = 0; i < mutatorCount && available.length > 0; i++) {
-        const idx = Math.floor(Math.random() * available.length);
-        chosen.push(available[idx] as WaveMutatorType);
-        available.splice(idx, 1);
+    let chosen: WaveMutatorType[] | null = null;
+
+    // Use forced mutators if provided (daily challenge), otherwise random roll
+    if (options?.forcedMutators) {
+      chosen = options.forcedMutators as WaveMutatorType[];
+    } else {
+      const mutatorCount = Math.floor(Math.random() * (MAX_MUTATORS_PER_WAVE + 1)); // 0, 1, or 2
+      if (mutatorCount > 0) {
+        const available = [...ALL_MUTATOR_TYPES];
+        chosen = [];
+        for (let i = 0; i < mutatorCount && available.length > 0; i++) {
+          const idx = Math.floor(Math.random() * available.length);
+          chosen.push(available[idx] as WaveMutatorType);
+          available.splice(idx, 1);
+        }
       }
+    }
+
+    if (chosen && chosen.length > 0) {
       props.mutators = chosen;
 
       // Apply swarm mutator: double enemies, half HP (mark in properties only,

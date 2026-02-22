@@ -44,6 +44,9 @@ interface GameContext {
   difficulty: string;
   mapSize: string;
   playerCount: number;
+  isEndless?: boolean;
+  gameSpeed?: number;
+  modifierCount?: number;
 }
 
 interface StatsStore extends LifetimeStats {
@@ -71,6 +74,10 @@ export const BADGES: Badge[] = [
   { id: 'slayer', name: 'Slayer', description: 'Kill 1000 enemies total', icon: '\u2620', color: '#ff4466' },
   { id: 'architect', name: 'Architect', description: 'Place 500 towers total', icon: '\u2302', color: '#44bbff' },
   { id: 'perfectionist', name: 'Perfectionist', description: 'Win on Hard difficulty', icon: '\u2728', color: '#cc88ff' },
+  { id: 'extreme_master', name: 'Extreme Master', description: 'Win on Extreme difficulty', icon: '\u2666', color: '#ffdd44' },
+  { id: 'endless_50', name: 'Endless Survivor', description: 'Reach wave 50 in Endless', icon: '\u221E', color: '#cc44ff' },
+  { id: 'speed_runner', name: 'Speed Runner', description: 'Win on 3x speed', icon: '\u26A1', color: '#ffee00' },
+  { id: 'challenge_master', name: 'Challenge Master', description: 'Win with 3+ modifiers active', icon: '\u2655', color: '#ff8844' },
 ];
 
 export function getUnlockedBadges(stats: LifetimeStats, leaderboard: LeaderboardEntry[]): Badge[] {
@@ -85,6 +92,16 @@ export function getUnlockedBadges(stats: LifetimeStats, leaderboard: Leaderboard
   // Perfectionist: check leaderboard for any hard+ win
   const hasHardWin = leaderboard.some(e => e.victory && (e.difficulty === 'hard' || e.difficulty === 'extreme'));
   if (hasHardWin) unlocked.push(BADGES.find(b => b.id === 'perfectionist')!);
+  // Extreme Master: win on extreme
+  const hasExtremeWin = leaderboard.some(e => e.victory && e.difficulty === 'extreme');
+  if (hasExtremeWin) unlocked.push(BADGES.find(b => b.id === 'extreme_master')!);
+  // Endless 50: best wave >= 50
+  if (stats.bestWaveReached >= 50) unlocked.push(BADGES.find(b => b.id === 'endless_50')!);
+  // Speed Runner & Challenge Master: stored via extended leaderboard entries
+  const hasSpeedWin = leaderboard.some(e => e.victory && (e as any).gameSpeed >= 3);
+  if (hasSpeedWin) unlocked.push(BADGES.find(b => b.id === 'speed_runner')!);
+  const hasChallengeWin = leaderboard.some(e => e.victory && ((e as any).modifierCount ?? 0) >= 3);
+  if (hasChallengeWin) unlocked.push(BADGES.find(b => b.id === 'challenge_master')!);
   return unlocked.filter(Boolean);
 }
 
@@ -153,7 +170,7 @@ export const useStatsStore = create<StatsStore>((set, get) => ({
     };
     saveStats(updated);
 
-    const entry: LeaderboardEntry = {
+    const entry: LeaderboardEntry & { gameSpeed?: number; modifierCount?: number; isEndless?: boolean } = {
       wave: waveReached,
       kills: playerStats?.kills ?? 0,
       damageDealt: playerStats?.damageDealt ?? 0,
@@ -165,6 +182,9 @@ export const useStatsStore = create<StatsStore>((set, get) => ({
       difficulty: gameContext?.difficulty ?? 'normal',
       mapSize: gameContext?.mapSize ?? 'medium',
       playerCount: gameContext?.playerCount ?? 1,
+      gameSpeed: gameContext?.gameSpeed,
+      modifierCount: gameContext?.modifierCount,
+      isEndless: gameContext?.isEndless,
     };
     const lb = [...prev.leaderboard, entry]
       .sort((a, b) => b.wave - a.wave || Number(b.victory) - Number(a.victory) || b.kills - a.kills)

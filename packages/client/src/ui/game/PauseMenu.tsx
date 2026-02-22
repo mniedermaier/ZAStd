@@ -4,9 +4,10 @@ interface PauseMenuProps {
   onResume: () => void;
   onHelp: () => void;
   onQuit: () => void;
+  isSolo?: boolean;
 }
 
-export function PauseMenu({ onResume, onHelp, onQuit }: PauseMenuProps) {
+export function PauseMenu({ onResume, onHelp, onQuit, isSolo }: PauseMenuProps) {
   const masterVolume = useSettingsStore((s) => s.masterVolume);
   const sfxVolume = useSettingsStore((s) => s.sfxVolume);
   const musicVolume = useSettingsStore((s) => s.musicVolume);
@@ -15,6 +16,8 @@ export function PauseMenu({ onResume, onHelp, onQuit }: PauseMenuProps) {
   const setSfxVolume = useSettingsStore((s) => s.setSfxVolume);
   const setMusicVolume = useSettingsStore((s) => s.setMusicVolume);
   const setColorblindMode = useSettingsStore((s) => s.setColorblindMode);
+  const gameSpeed = useSettingsStore((s) => s.gameSpeed);
+  const setGameSpeed = useSettingsStore((s) => s.setGameSpeed);
 
   return (
     <div style={{
@@ -67,6 +70,35 @@ export function PauseMenu({ onResume, onHelp, onQuit }: PauseMenuProps) {
             {colorblindMode ? 'ON' : 'OFF'}
           </button>
         </div>
+
+        {isSolo && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 16,
+            padding: '8px 0',
+          }}>
+            <span style={{ fontSize: 13, color: '#e0e0f0' }}>Game Speed</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[1, 2, 3].map(s => (
+                <button
+                  key={s}
+                  onClick={() => setGameSpeed(s)}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    background: gameSpeed === s ? 'rgba(68, 187, 255, 0.2)' : 'rgba(26, 26, 58, 0.9)',
+                    border: `1px solid ${gameSpeed === s ? '#44bbff' : '#333366'}`,
+                    color: gameSpeed === s ? '#44bbff' : '#8888aa',
+                  }}
+                >
+                  {s}x
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button className="primary" onClick={onResume} style={{ width: '100%', padding: '10px 20px' }}>

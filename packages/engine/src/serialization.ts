@@ -101,6 +101,8 @@ export function gameStateFromSnapshot(snapshot: GameStateSnapshot): GameState {
     enemy.stunEndTime = es.stunEndTime ?? 0;
     enemy.armorDebuff = es.armorDebuff ?? 0;
     enemy.armorDebuffEndTime = es.armorDebuffEndTime ?? 0;
+    enemy.isSentCreep = es.isSentCreep ?? false;
+    enemy.sentByPlayerId = es.sentByPlayerId ?? null;
     gs.enemies.set(eid, enemy);
   }
 

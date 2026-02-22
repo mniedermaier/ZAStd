@@ -171,6 +171,79 @@ export function stopMusic() {
   }
 }
 
+// --- Ability Sounds (per governor) ---
+
+export function playAbilityFire() {
+  playTone(120, 0.3, 'sawtooth', 0.15);
+  playNoise(0.15, 0.12);
+}
+
+export function playAbilityIce() {
+  playTone(1200, 0.15, 'sine', 0.12);
+  setTimeout(() => playTone(800, 0.15, 'sine', 0.12), 80);
+  setTimeout(() => playTone(600, 0.2, 'sine', 0.12), 160);
+}
+
+export function playAbilityThunder() {
+  playNoise(0.1, 0.15);
+  setTimeout(() => playTone(1400, 0.08, 'sine', 0.15), 50);
+}
+
+export function playAbilityPoison() {
+  playTone(150, 0.2, 'triangle', 0.1);
+  setTimeout(() => playTone(180, 0.2, 'triangle', 0.1), 100);
+  setTimeout(() => playTone(160, 0.2, 'triangle', 0.1), 200);
+}
+
+export function playAbilityDeath() {
+  playTone(400, 0.4, 'sawtooth', 0.12);
+  setTimeout(() => playTone(250, 0.3, 'sawtooth', 0.1), 100);
+  setTimeout(() => playTone(150, 0.3, 'sawtooth', 0.08), 200);
+}
+
+export function playAbilityNature() {
+  playTone(330, 0.2, 'sine', 0.12);
+  setTimeout(() => playTone(440, 0.2, 'sine', 0.12), 80);
+  setTimeout(() => playTone(550, 0.25, 'sine', 0.15), 160);
+}
+
+export function playAbilityArcane() {
+  playTone(600, 0.3, 'sine', 0.12, 50);
+  setTimeout(() => playTone(600, 0.3, 'sine', 0.12, -50), 100);
+}
+
+export function playAbilityHoly() {
+  playTone(523, 0.2, 'sine', 0.08);
+  setTimeout(() => playTone(659, 0.2, 'sine', 0.08), 80);
+  setTimeout(() => playTone(784, 0.2, 'sine', 0.08), 160);
+  setTimeout(() => playTone(1047, 0.3, 'sine', 0.1), 240);
+}
+
+// --- Ping Sounds ---
+
+export function playPingAlert() {
+  playTone(880, 0.08, 'square', 0.12);
+  setTimeout(() => playTone(880, 0.08, 'square', 0.12), 120);
+}
+
+export function playPingHere() {
+  playTone(660, 0.12, 'sine', 0.12);
+}
+
+export function playPingHelp() {
+  playTone(440, 0.08, 'triangle', 0.12);
+  setTimeout(() => playTone(440, 0.08, 'triangle', 0.12), 100);
+  setTimeout(() => playTone(440, 0.08, 'triangle', 0.12), 200);
+}
+
+// --- Synergy Sound ---
+
+export function playSynergyActivation() {
+  playTone(660, 0.12, 'sine', 0.1);
+  setTimeout(() => playTone(880, 0.12, 'sine', 0.1), 80);
+  setTimeout(() => playTone(1100, 0.15, 'sine', 0.12), 160);
+}
+
 // Initialize audio context on first user interaction
 export function initAudio() {
   const handler = () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLobbyStore } from '../../stores/lobby-store';
-import { useStatsStore } from '../../stores/stats-store';
+import { useStatsStore, getUnlockedBadges } from '../../stores/stats-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { isSupabaseConfigured } from '../../supabase';
 import { LeaderboardPanel } from './LeaderboardPanel';
@@ -10,9 +10,12 @@ interface MainMenuProps {
   onCreateRoom: () => void;
   onJoinByCode: () => void;
   onPlaySolo: () => void;
+  onPlayDaily?: () => void;
+  onPlayEndless?: () => void;
+  onPlayTutorial?: () => void;
 }
 
-export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo }: MainMenuProps) {
+export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo, onPlayDaily, onPlayEndless, onPlayTutorial }: MainMenuProps) {
   const { playerName, setPlayerName } = useLobbyStore();
   const hasSupabase = isSupabaseConfigured();
   const stats = useStatsStore();
@@ -73,6 +76,63 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
         >
           Play Solo
         </button>
+        {onPlayDaily && (
+          <button
+            onClick={onPlayDaily}
+            style={{
+              padding: '12px 24px',
+              fontSize: 15,
+              border: '1px solid #ffaa44',
+              color: '#ffaa44',
+              background: 'rgba(255, 170, 68, 0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            <span>Daily Challenge</span>
+            <span style={{ fontSize: 10, color: '#aa8844', fontWeight: 400 }}>Same seed for everyone today</span>
+          </button>
+        )}
+        {onPlayEndless && (
+          <button
+            onClick={onPlayEndless}
+            style={{
+              padding: '12px 24px',
+              fontSize: 15,
+              border: '1px solid #cc44ff',
+              color: '#cc44ff',
+              background: 'rgba(204, 68, 255, 0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            <span>Endless Mode</span>
+            <span style={{ fontSize: 10, color: '#9944aa', fontWeight: 400 }}>Survive as long as you can</span>
+          </button>
+        )}
+        {onPlayTutorial && (
+          <button
+            onClick={onPlayTutorial}
+            style={{
+              padding: '12px 24px',
+              fontSize: 15,
+              border: '1px solid #44ff88',
+              color: '#44ff88',
+              background: 'rgba(68, 255, 136, 0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            <span>Tutorial {!localStorage.getItem('zastd-tutorial-complete') ? '(New!)' : ''}</span>
+            <span style={{ fontSize: 10, color: '#44aa66', fontWeight: 400 }}>Learn the basics</span>
+          </button>
+        )}
         <div style={{ borderTop: '1px solid #333366', margin: '4px 0' }} />
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -109,6 +169,27 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
         </div>
       )}
 
+      {stats.gamesPlayed > 0 && (() => {
+        const badges = getUnlockedBadges(stats, stats.leaderboard);
+        return badges.length > 0 ? (
+          <div style={{
+            display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 280,
+          }}>
+            {badges.map(b => (
+              <span
+                key={b.id}
+                title={`${b.name}: ${b.description}`}
+                style={{
+                  fontSize: 18,
+                  cursor: 'default',
+                  filter: `drop-shadow(0 0 3px ${b.color})`,
+                }}
+              >{b.icon}</span>
+            ))}
+          </div>
+        ) : null;
+      })()}
+
       {(stats.gamesPlayed > 0 || hasSupabase) && (
         <button
           onClick={() => setShowLeaderboard(true)}
@@ -120,29 +201,38 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
 
       {showLeaderboard && <LeaderboardPanel onClose={() => setShowLeaderboard(false)} />}
 
-      <a
-        href="https://github.com/mniedermaier/ZAStd"
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          position: 'fixed',
-          bottom: 12,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 5,
-          color: '#8888aa',
-          textDecoration: 'none',
-          fontSize: 12,
-          transition: 'color 0.2s',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = '#44bbff')}
-        onMouseLeave={(e) => (e.currentTarget.style.color = '#8888aa')}
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/>
-        </svg>
-        GitHub
-      </a>
+      <div style={{
+        position: 'fixed',
+        bottom: 12,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+      }}>
+        <a
+          href="https://github.com/mniedermaier/ZAStd"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            color: '#8888aa',
+            textDecoration: 'none',
+            fontSize: 12,
+            transition: 'color 0.2s',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = '#44bbff')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = '#8888aa')}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          GitHub
+        </a>
+        <span style={{ color: '#555577', fontSize: 10 }}>
+          Build: {(typeof __BUILD_DATE__ !== 'undefined' ? __BUILD_DATE__ : 'dev')}
+        </span>
+      </div>
     </div>
   );
 }
