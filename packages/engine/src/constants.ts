@@ -23,7 +23,7 @@ export const DEFAULT_MAP_WIDTH = 30;
 export const DEFAULT_MAP_HEIGHT = 20;
 
 // Difficulty & Map Validation
-export const VALID_DIFFICULTIES = ['easy', 'normal', 'hard', 'extreme'] as const;
+export const VALID_DIFFICULTIES = ['easy', 'normal', 'hard', 'extreme', 'endless'] as const;
 export const VALID_MAP_SIZES = ['tiny', 'small', 'medium', 'large'] as const;
 
 // Difficulty scaling: { healthMult, speedMult, incomeMult, startingMoneyMult }
@@ -32,6 +32,7 @@ export const DIFFICULTY_SCALING: Record<string, { healthMult: number; speedMult:
   normal:  { healthMult: 1.0,  speedMult: 1.0, incomeMult: 1.0, startingMoneyMult: 1.0 },
   hard:    { healthMult: 1.6,  speedMult: 1.15, incomeMult: 0.75, startingMoneyMult: 0.8 },
   extreme: { healthMult: 2.5,  speedMult: 1.3, incomeMult: 0.5, startingMoneyMult: 0.6 },
+  endless: { healthMult: 1.0,  speedMult: 1.0, incomeMult: 1.0, startingMoneyMult: 1.0 },
 };
 
 // Projectile Constants

@@ -172,6 +172,7 @@ export function LobbyPage({
               <option value="normal">Normal</option>
               <option value="hard">Hard</option>
               <option value="extreme">Extreme</option>
+              <option value="endless">Endless</option>
             </select>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

@@ -160,6 +160,9 @@ export class GameState {
     if (opts.difficulty !== undefined) {
       if (!(VALID_DIFFICULTIES as readonly string[]).includes(opts.difficulty)) return false;
       this.difficulty = opts.difficulty;
+      if (opts.difficulty === 'endless') {
+        this.endlessMode = true;
+      }
     }
     if (opts.moneySharing !== undefined) {
       this.moneySharing = opts.moneySharing;
@@ -452,6 +455,15 @@ export class GameState {
     const enemyId = uuid();
     const ds = this.difficultyScaling;
     const enemy = createEnemy(enemyTypeToSpawn, enemyId, spawnX, spawnY, this.waveNumber, this.pathVersion, ds.healthMult, ds.speedMult);
+
+    // Apply endless exponential scaling starting at wave 5
+    if (this.endlessMode && this.waveNumber >= 5) {
+      const endlessMult = Math.pow(1.15, this.waveNumber - 5);
+      const endlessSpeedMult = 1 + 0.02 * (this.waveNumber - 5);
+      const newHp = Math.floor(enemy.stats.maxHealth * endlessMult);
+      enemy.stats = { ...enemy.stats, maxHealth: newHp, speed: enemy.stats.speed * endlessSpeedMult };
+      enemy.currentHealth = newHp;
+    }
 
     // Apply adaptive scaling (multiplayer)
     if (this.adaptiveScaling !== 1.0) {
