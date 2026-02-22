@@ -39,6 +39,7 @@ interface GamePageProps {
   onSendCreeps?: (enemyType: string, count: number) => void;
   onQueueUpgrade?: (towerId: string) => void;
   onCancelQueue?: (towerId: string) => void;
+  onSendGold?: (targetPlayerId: string, amount: number) => void;
   showChat?: boolean;
   isSolo?: boolean;
   isSpectating?: boolean;
@@ -60,7 +61,7 @@ function useIsMobile() {
 
 export function GamePage({
   playerId, playerName, onPlaceTower, onUpgradeTower, onSellTower, onSetTargeting, onStartWave, onBuyTech, onUseAbility, onQuit,
-  onSendChat, onPing, onSendCreeps, onQueueUpgrade, onCancelQueue, showChat, isSolo, isSpectating,
+  onSendChat, onPing, onSendCreeps, onQueueUpgrade, onCancelQueue, onSendGold, showChat, isSolo, isSpectating,
 }: GamePageProps) {
   const isPaused = useSettingsStore((s) => s.isPaused);
   const showHelp = useSettingsStore((s) => s.showHelp);
@@ -96,7 +97,7 @@ export function GamePage({
         maxHeight: 'calc(100% - 80px)', overflow: 'hidden',
       }}>
         <HUD playerId={playerId} onStartWave={onStartWave} />
-        <PlayerListPanel />
+        <PlayerListPanel playerId={playerId} onSendGold={onSendGold} />
         <TechPanel playerId={playerId} onBuyTech={onBuyTech} />
       </div>
 
@@ -109,25 +110,6 @@ export function GamePage({
         overflow: 'hidden',
       }}>
         <WaveInfo onStartWave={onStartWave} />
-        {isSolo && gameSpeed > 1 && (
-          <button
-            onClick={() => setGameSpeed(gameSpeed >= 3 ? 1 : gameSpeed + 1)}
-            style={{
-              pointerEvents: 'auto',
-              padding: '2px 8px',
-              fontSize: 12,
-              fontWeight: 700,
-              background: 'rgba(68, 187, 255, 0.15)',
-              border: '1px solid #44bbff',
-              color: '#44bbff',
-              borderRadius: 4,
-              cursor: 'pointer',
-              alignSelf: 'flex-end',
-            }}
-          >
-            {gameSpeed}x
-          </button>
-        )}
         {showChat && onSendChat && (
           <ChatPanel playerName={playerName || 'Player'} onSendChat={onSendChat} />
         )}
@@ -217,7 +199,7 @@ export function GamePage({
           {activePanel === 'scout' && <WavePreview />}
           {activePanel === 'map' && <Minimap />}
           {activePanel === 'log' && <EventLog />}
-          {activePanel === 'players' && <PlayerListPanel />}
+          {activePanel === 'players' && <PlayerListPanel playerId={playerId} onSendGold={onSendGold} />}
         </MobileDrawer>
       )}
 

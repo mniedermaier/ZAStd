@@ -452,6 +452,15 @@ export class RoomManager {
     });
   }
 
+  sendGold(targetPlayerId: string, amount: number): void {
+    this._dispatchAction({
+      type: 'send_gold',
+      playerId: this.playerId,
+      targetPlayerId,
+      amount,
+    });
+  }
+
   queueUpgrade(towerId: string): void {
     this._dispatchAction({
       type: 'queue_upgrade',

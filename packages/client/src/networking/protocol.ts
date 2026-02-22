@@ -16,6 +16,7 @@ export type ClientAction =
   | { type: 'ping'; playerId: string; playerName: string; x: number; y: number; pingType: string }
   | { type: 'spectate_request'; playerId: string; playerName: string }
   | { type: 'send_creeps'; playerId: string; enemyType: string; count: number }
+  | { type: 'send_gold'; playerId: string; targetPlayerId: string; amount: number }
   | { type: 'queue_upgrade'; playerId: string; towerId: string }
   | { type: 'cancel_queue'; playerId: string; towerId: string }
   | { type: 'start_vote'; playerId: string; voteType: string; targetId?: string }

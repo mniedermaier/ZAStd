@@ -534,6 +534,18 @@ export class GameState {
     return false;
   }
 
+  // --- Gold Transfer ---
+  sendGold(fromPlayerId: string, toPlayerId: string, amount: number): boolean {
+    if (amount < 1) return false;
+    const from = this.players.get(fromPlayerId);
+    const to = this.players.get(toPlayerId);
+    if (!from || !to) return false;
+    if (fromPlayerId === toPlayerId) return false;
+    if (!from.spendMoney(amount)) return false;
+    to.addMoney(amount);
+    return true;
+  }
+
   // --- Creep Sending ---
   sendCreeps(playerId: string, enemyType: string, count: number): boolean {
     if (this.phase !== GamePhase.WaveActive && this.phase !== GamePhase.Playing && this.phase !== GamePhase.WaveComplete) return false;

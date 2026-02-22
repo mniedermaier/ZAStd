@@ -70,6 +70,11 @@ export function processAction(gameState: GameState, action: ClientAction): { suc
       return sent ? { success: true } : { success: false, message: 'Cannot send creeps' };
     }
 
+    case 'send_gold': {
+      const transferred = gameState.sendGold(action.playerId, action.targetPlayerId, action.amount);
+      return transferred ? { success: true } : { success: false, message: 'Cannot send gold' };
+    }
+
     case 'queue_upgrade': {
       const queued = gameState.queueUpgrade(action.playerId, action.towerId);
       return queued ? { success: true } : { success: false, message: 'Cannot queue upgrade' };

@@ -1478,6 +1478,10 @@ function MultiplayerMode() {
     rm?.cancelQueuedUpgrade(towerId);
   }, [rm]);
 
+  const handleSendGold = useCallback((targetPlayerId: string, amount: number) => {
+    rm?.sendGold(targetPlayerId, amount);
+  }, [rm]);
+
   const handleSendChat = useCallback((text: string) => {
     rm?.sendChat(text);
   }, [rm]);
@@ -1585,6 +1589,7 @@ function MultiplayerMode() {
         onSendCreeps={handleSendCreeps}
         onQueueUpgrade={handleQueueUpgrade}
         onCancelQueue={handleCancelQueue}
+        onSendGold={handleSendGold}
         showChat={true}
       />
       {gameOver && (

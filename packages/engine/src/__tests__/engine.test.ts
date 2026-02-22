@@ -1475,6 +1475,53 @@ describe('Voting System', () => {
   });
 });
 
+describe('Send Gold', () => {
+  it('deducts from sender and adds to receiver', () => {
+    const gs = new GameState();
+    gs.addPlayer('p1', 'Alice');
+    gs.addPlayer('p2', 'Bob');
+    const p1 = gs.players.get('p1')!;
+    const p2 = gs.players.get('p2')!;
+    p1.money = 200;
+    p2.money = 50;
+    expect(gs.sendGold('p1', 'p2', 75)).toBe(true);
+    expect(p1.money).toBe(125);
+    expect(p2.money).toBe(125);
+  });
+
+  it('rejects insufficient funds', () => {
+    const gs = new GameState();
+    gs.addPlayer('p1', 'Alice');
+    gs.addPlayer('p2', 'Bob');
+    gs.players.get('p1')!.money = 10;
+    expect(gs.sendGold('p1', 'p2', 50)).toBe(false);
+    expect(gs.players.get('p1')!.money).toBe(10);
+  });
+
+  it('rejects invalid player IDs', () => {
+    const gs = new GameState();
+    gs.addPlayer('p1', 'Alice');
+    expect(gs.sendGold('p1', 'nonexistent', 10)).toBe(false);
+    expect(gs.sendGold('nonexistent', 'p1', 10)).toBe(false);
+  });
+
+  it('rejects sending to self', () => {
+    const gs = new GameState();
+    gs.addPlayer('p1', 'Alice');
+    gs.players.get('p1')!.money = 100;
+    expect(gs.sendGold('p1', 'p1', 10)).toBe(false);
+  });
+
+  it('rejects zero or negative amount', () => {
+    const gs = new GameState();
+    gs.addPlayer('p1', 'Alice');
+    gs.addPlayer('p2', 'Bob');
+    gs.players.get('p1')!.money = 100;
+    expect(gs.sendGold('p1', 'p2', 0)).toBe(false);
+    expect(gs.sendGold('p1', 'p2', -5)).toBe(false);
+  });
+});
+
 describe('Tutorial', () => {
   it('uses simplified waves (5 waves)', () => {
     const gs = new GameState();
