@@ -35,26 +35,21 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
       padding: 'max(env(safe-area-inset-top, 0px), 16px) 0 max(env(safe-area-inset-bottom, 0px), 16px)',
     }}>
       <div style={{ flex: '1 0 0', minHeight: 8 }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'min(12px, 2vw)', padding: '0 12px' }}>
-        <img
-          src="/favicon.svg"
-          alt="ZAS"
-          style={{
-            width: 'min(52px, 10vw)',
-            height: 'min(52px, 10vw)',
-            filter: 'drop-shadow(0 0 8px rgba(68, 187, 255, 0.4))',
-            flexShrink: 0,
-          }}
-        />
-        <div>
-          <h1 style={{ fontSize: 'min(36px, 7vw)', color: '#44bbff', letterSpacing: 3, margin: 0, lineHeight: 1.1 }}>
-            ZAStd Tower Defense
-          </h1>
-          <p style={{ color: '#8888aa', fontSize: 'min(13px, 3vw)', margin: '2px 0 0 0' }}>
-            Cooperative maze-building tower defense
-          </p>
-        </div>
-      </div>
+      <img
+        src="/favicon.svg"
+        alt="ZAS"
+        style={{
+          width: 'min(64px, 14vw)',
+          height: 'min(64px, 14vw)',
+          filter: 'drop-shadow(0 0 10px rgba(68, 187, 255, 0.5))',
+        }}
+      />
+      <h1 style={{ fontSize: 'min(36px, 7vw)', color: '#44bbff', letterSpacing: 3, margin: 0, textAlign: 'center' }}>
+        ZAStd
+      </h1>
+      <p style={{ color: '#8888aa', fontSize: 'min(13px, 3vw)', marginTop: -4 }}>
+        Cooperative maze-building tower defense
+      </p>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <label style={{ fontSize: 12, color: '#8888aa' }}>Name:</label>
