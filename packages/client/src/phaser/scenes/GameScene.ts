@@ -202,8 +202,7 @@ export class GameScene extends Phaser.Scene {
   private bloomPool: Phaser.GameObjects.Image[] = [];
   private bloomActiveCount = 0;
 
-  // --- Vignette & Nebulae ---
-  private vignetteSprite!: Phaser.GameObjects.Image;
+  // --- Nebulae ---
   private nebulae: Phaser.GameObjects.Image[] = [];
   private nebulaeDriftX: number[] = [];
   private nebulaeDriftY: number[] = [];
@@ -286,12 +285,6 @@ export class GameScene extends Phaser.Scene {
     // Initialize effect object pools (damage numbers + impact circles)
     initDamageNumberPool(this);
     initImpactPool(this);
-
-    // Vignette overlay
-    this.vignetteSprite = this.add.image(0, 0, 'vignette_radial');
-    this.vignetteSprite.setBlendMode(Phaser.BlendModes.MULTIPLY);
-    this.vignetteSprite.setDepth(20);
-    this.vignetteSprite.setAlpha(0.6);
 
     // Cache keyboard keys
     if (this.input.keyboard) {
@@ -587,8 +580,7 @@ export class GameScene extends Phaser.Scene {
     this.drawTowerSelection(snapshot, _delta);
     if (quality !== 'low') this.drawBloomLayer(snapshot, quality);
     else { for (let i = 0; i < this.bloomActiveCount; i++) this.bloomPool[i].setVisible(false); this.bloomActiveCount = 0; }
-    if (quality !== 'low') this.updateVignette();
-    else this.vignetteSprite.setVisible(false);
+    // Vignette is now CSS overlay in PhaserGame.tsx
     if (quality === 'high') this.updateNebulae(_delta);
     else { for (const n of this.nebulae) n.setVisible(false); }
     this.updateTowerIdle(snapshot, _delta);
@@ -678,19 +670,6 @@ export class GameScene extends Phaser.Scene {
       img.setAlpha(pulse);
       img.setVisible(true);
     }
-  }
-
-  // ===== VIGNETTE =====
-
-  private updateVignette() {
-    const cam = this.cameras.main;
-    const cx = cam.scrollX + cam.width / (2 * cam.zoom);
-    const cy = cam.scrollY + cam.height / (2 * cam.zoom);
-    this.vignetteSprite.setPosition(cx, cy);
-    // Scale to cover viewport with 1.2x overflow
-    const scaleX = (cam.width / cam.zoom * 1.2) / 256;
-    const scaleY = (cam.height / cam.zoom * 1.2) / 256;
-    this.vignetteSprite.setScale(scaleX, scaleY);
   }
 
   // ===== NEBULAE =====

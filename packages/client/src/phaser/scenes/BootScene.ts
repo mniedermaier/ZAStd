@@ -13,7 +13,6 @@ export class BootScene extends Phaser.Scene {
     // Generate reusable textures for bloom/particle/atmosphere effects
     this.generateGlowSoft();
     this.generateParticleDot();
-    this.generateVignetteRadial();
     this.generateNebulaBlob();
 
     this.scene.start('GameScene');
@@ -49,43 +48,6 @@ export class BootScene extends Phaser.Scene {
     g.fillCircle(cx, cy, 4);
     g.generateTexture('particle_dot', size, size);
     g.destroy();
-  }
-
-  /** 256x256 white center → dark edges for MULTIPLY screen-edge darkening */
-  private generateVignetteRadial() {
-    const size = 256;
-    const ct = this.textures.createCanvas('vignette_radial', size, size)!;
-    const ctx = ct.context;
-    const cx = size / 2;
-    const cy = size / 2;
-    const maxR = size / 2;
-
-    // Per-pixel: white at center (no MULTIPLY effect), dark at edges
-    const imageData = ctx.createImageData(size, size);
-    const data = imageData.data;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy) / maxR;
-        let brightness: number;
-        if (dist <= 0.6) {
-          brightness = 255; // white = no darkening
-        } else if (dist >= 1.0) {
-          brightness = 51; // darkest edge
-        } else {
-          const t = (dist - 0.6) / 0.4;
-          brightness = Math.round(255 - t * 204);
-        }
-        const idx = (y * size + x) * 4;
-        data[idx] = brightness;
-        data[idx + 1] = brightness;
-        data[idx + 2] = brightness;
-        data[idx + 3] = 255;
-      }
-    }
-    ctx.putImageData(imageData, 0, 0);
-    ct.refresh();
   }
 
   /** 128x128 large soft white circle for background atmosphere */
