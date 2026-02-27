@@ -123,6 +123,9 @@ export class GameScene extends Phaser.Scene {
   // Path preview for tower placement
   private _lastPreviewCellX = -1;
   private _lastPreviewCellY = -1;
+  private _lastGhostCellX = -1;
+  private _lastGhostCellY = -1;
+  private _lastGhostTowerType: string | null = null;
   private _previewPathCells: number[][] | null = null;
 
   // Enemy interpolation
@@ -474,6 +477,18 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, _delta: number) {
     const snapshot = useGameStore.getState().snapshot;
     if (!snapshot) return;
+
+    // Clear ghost artifacts when placement mode is cancelled
+    const uiState_ = useUIStore.getState();
+    if (!uiState_.placementMode && !uiState_.abilityTargeting && (this._lastGhostCellX !== -1 || this._lastGhostTowerType !== null)) {
+      this.ghostGraphics.clear();
+      if (this.ghostDpsText) { this.ghostDpsText.destroy(); this.ghostDpsText = null; }
+      if (this.ghostNameText) { this.ghostNameText.destroy(); this.ghostNameText = null; }
+      this._lastGhostCellX = -1;
+      this._lastGhostCellY = -1;
+      this._lastGhostTowerType = null;
+      this._previewPathCells = null;
+    }
 
     // Camera WASD
     const cam = this.cameras.main;
@@ -3002,14 +3017,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateGhost(pointer: Phaser.Input.Pointer) {
-    this.ghostGraphics.clear();
-    // Clean up ghost overlay texts
-    if (this.ghostDpsText) { this.ghostDpsText.destroy(); this.ghostDpsText = null; }
-    if (this.ghostNameText) { this.ghostNameText.destroy(); this.ghostNameText = null; }
     const uiStore = useUIStore.getState();
 
-    // Ability targeting ghost: show AoE radius circle
+    // Ability targeting ghost: show AoE radius circle (needs per-frame update for pulse animation)
     if (uiStore.abilityTargeting) {
+      this.ghostGraphics.clear();
+      if (this.ghostDpsText) { this.ghostDpsText.destroy(); this.ghostDpsText = null; }
+      if (this.ghostNameText) { this.ghostNameText.destroy(); this.ghostNameText = null; }
+      this._lastGhostCellX = -1;
+      this._lastGhostCellY = -1;
+
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const cellX = Math.floor(worldPoint.x / CELL_SIZE);
       const cellY = Math.floor(worldPoint.y / CELL_SIZE);
@@ -3043,6 +3060,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (!uiStore.placementMode || !uiStore.selectedTowerType) {
+      // Clear ghost when leaving placement mode
+      if (this._lastGhostCellX !== -1 || this._lastGhostTowerType !== null) {
+        this.ghostGraphics.clear();
+        if (this.ghostDpsText) { this.ghostDpsText.destroy(); this.ghostDpsText = null; }
+        if (this.ghostNameText) { this.ghostNameText.destroy(); this.ghostNameText = null; }
+        this._lastGhostCellX = -1;
+        this._lastGhostCellY = -1;
+        this._lastGhostTowerType = null;
+        this._lastPreviewCellX = -1;
+        this._lastPreviewCellY = -1;
+        this._previewPathCells = null;
+      }
       // Revert cursor when not in placement mode
       if (this._prevCursorStyle !== 'default') {
         this.input.setDefaultCursor('default');
@@ -3060,6 +3089,17 @@ export class GameScene extends Phaser.Scene {
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const cellX = Math.floor(worldPoint.x / CELL_SIZE);
     const cellY = Math.floor(worldPoint.y / CELL_SIZE);
+
+    // Skip entire redraw if hovering the same cell with the same tower type
+    if (cellX === this._lastGhostCellX && cellY === this._lastGhostCellY
+        && uiStore.selectedTowerType === this._lastGhostTowerType) {
+      return;
+    }
+    this._lastGhostCellX = cellX;
+    this._lastGhostCellY = cellY;
+    this._lastGhostTowerType = uiStore.selectedTowerType;
+
+    this.ghostGraphics.clear();
 
     const snapshot = useGameStore.getState().snapshot;
     if (!snapshot) return;
@@ -3124,55 +3164,66 @@ export class GameScene extends Phaser.Scene {
       const dps = estimateTowerDPS(uiStore.selectedTowerType as TowerType);
       const ghostCx = cellX * CELL_SIZE + CELL_SIZE / 2;
       const ghostCy = cellY * CELL_SIZE + CELL_SIZE;
-      this.ghostDpsText = this.add.text(ghostCx, ghostCy + 2, `DPS: ${dps}`, {
-        fontSize: '8px',
-        color: '#44bbff',
-        fontFamily: 'monospace',
-        stroke: '#000000',
-        strokeThickness: 2,
-        resolution: 3,
-      });
-      this.ghostDpsText.setDepth(5);
-      this.ghostDpsText.setOrigin(0.5, 0);
+      // Reuse text objects instead of destroy/recreate
+      if (this.ghostDpsText) {
+        this.ghostDpsText.setPosition(ghostCx, ghostCy + 2);
+        this.ghostDpsText.setText(`DPS: ${dps}`);
+      } else {
+        this.ghostDpsText = this.add.text(ghostCx, ghostCy + 2, `DPS: ${dps}`, {
+          fontSize: '8px',
+          color: '#44bbff',
+          fontFamily: 'monospace',
+          stroke: '#000000',
+          strokeThickness: 2,
+          resolution: 3,
+        });
+        this.ghostDpsText.setDepth(5);
+        this.ghostDpsText.setOrigin(0.5, 0);
+      }
 
       // Feature 12: Tower type name label on ghost
-      this.ghostNameText = this.add.text(ghostCx, cellY * CELL_SIZE - 2, uiStore.selectedTowerType, {
-        fontSize: '7px',
-        color: '#e0e0f0',
-        fontFamily: 'monospace',
-        stroke: '#000000',
-        strokeThickness: 2,
-        resolution: 3,
-      });
-      this.ghostNameText.setDepth(5);
-      this.ghostNameText.setOrigin(0.5, 1);
+      if (this.ghostNameText) {
+        this.ghostNameText.setPosition(ghostCx, cellY * CELL_SIZE - 2);
+        this.ghostNameText.setText(uiStore.selectedTowerType);
+      } else {
+        this.ghostNameText = this.add.text(ghostCx, cellY * CELL_SIZE - 2, uiStore.selectedTowerType, {
+          fontSize: '7px',
+          color: '#e0e0f0',
+          fontFamily: 'monospace',
+          stroke: '#000000',
+          strokeThickness: 2,
+          resolution: 3,
+        });
+        this.ghostNameText.setDepth(5);
+        this.ghostNameText.setOrigin(0.5, 1);
+      }
+    } else {
+      if (this.ghostDpsText) { this.ghostDpsText.destroy(); this.ghostDpsText = null; }
+      if (this.ghostNameText) { this.ghostNameText.destroy(); this.ghostNameText = null; }
     }
 
     // Path preview: show how enemy path changes with this tower placement
-    if (!blocked && inBounds && (cellX !== this._lastPreviewCellX || cellY !== this._lastPreviewCellY)) {
-      this._lastPreviewCellX = cellX;
-      this._lastPreviewCellY = cellY;
+    if (!blocked && inBounds) {
       try {
         const spawn: [number, number] = [snapshot.map.spawn[0], snapshot.map.spawn[1]];
         const end: [number, number] = [snapshot.map.end[0], snapshot.map.end[1]];
         const waypoints: [number, number][] = snapshot.map.checkpoints.map(([x, y]) => [x, y] as [number, number]);
         const grid = new OccupancyGrid(snapshot.map.width, snapshot.map.height, spawn, end, waypoints);
-        // Block existing towers
-        for (const ts of Object.values(snapshot.towers)) grid.placeTower(ts.x, ts.y);
-        // Block ghost cell
-        if (grid.canPlace(cellX, cellY)) {
-          grid.placeTower(cellX, cellY);
-          this._previewPathCells = grid.getPathCells().map(([x, y]) => [x, y]);
+        // Populate blocked set directly (avoids BFS per tower via placeTower/canPlace)
+        for (const ts of Object.values(snapshot.towers)) grid.blocked.add(`${ts.x},${ts.y}`);
+        // Add ghost cell
+        grid.blocked.add(`${cellX},${cellY}`);
+        // getPathCells triggers single BFS recalculation (_pathCells is still null on fresh grid)
+        const pathCells = grid.getPathCells();
+        if (pathCells.length > 0) {
+          this._previewPathCells = pathCells.map(([x, y]) => [x, y]);
         } else {
           this._previewPathCells = null;
         }
       } catch {
         this._previewPathCells = null;
       }
-    }
-    if (blocked || !inBounds) {
-      this._lastPreviewCellX = -1;
-      this._lastPreviewCellY = -1;
+    } else {
       this._previewPathCells = null;
     }
 
