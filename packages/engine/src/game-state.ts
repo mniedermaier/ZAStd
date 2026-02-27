@@ -474,9 +474,12 @@ export class GameState {
 
     // Endless exponential scaling starting at wave 5
     if (this.endlessMode && this.waveNumber >= 5) {
-      const endlessMult = Math.pow(1.15, this.waveNumber - 5);
+      const wavesOver5 = this.waveNumber - 5;
+      // Flying enemies get softer scaling since they bypass the maze entirely
+      const isFlying = stats.isFlying;
+      const endlessMult = Math.pow(isFlying ? 1.12 : 1.15, wavesOver5);
       stats.maxHealth = Math.floor(stats.maxHealth * endlessMult);
-      stats.speed *= 1 + 0.02 * (this.waveNumber - 5);
+      stats.speed *= 1 + (isFlying ? 0.01 : 0.02) * wavesOver5;
       hpChanged = true;
     }
 

@@ -358,7 +358,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     enemies.push([EnemyType.Armored, Math.floor(4 * totalMult)]);
     enemies.push([EnemyType.MagicResist, Math.floor(4 * totalMult)]);
     enemies.push([EnemyType.Healer, Math.floor(3 * totalMult)]);
-    enemies.push([EnemyType.Flying, Math.floor(5 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(3 * totalMult)]);
     props.name = 'The Siege';
     props.tags = ['boss', 'tank', 'armored', 'magic_resist', 'flying'];
   } else if (waveNumber === 30) {
@@ -368,7 +368,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     enemies.push([EnemyType.MagicResist, Math.floor(5 * totalMult)]);
     enemies.push([EnemyType.Healer, Math.floor(4 * totalMult)]);
     enemies.push([EnemyType.Berserker, Math.floor(6 * totalMult)]);
-    enemies.push([EnemyType.Flying, Math.floor(6 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(4 * totalMult)]);
     props.name = 'Apocalypse';
     props.tags = ['boss', 'tank', 'armored', 'berserker', 'flying'];
   } else if (waveNumber === 40) {
@@ -377,7 +377,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     enemies.push([EnemyType.Armored, Math.floor(6 * totalMult)]);
     enemies.push([EnemyType.MagicResist, Math.floor(6 * totalMult)]);
     enemies.push([EnemyType.Healer, Math.floor(5 * totalMult)]);
-    enemies.push([EnemyType.Flying, Math.floor(8 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(5 * totalMult)]);
     enemies.push([EnemyType.Berserker, Math.floor(8 * totalMult)]);
     enemies.push([EnemyType.Splitter, Math.floor(6 * totalMult)]);
     enemies.push([EnemyType.Swarm, Math.floor(15 * totalMult)]);
@@ -391,7 +391,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     enemies.push([EnemyType.Armored, Math.floor(4 * totalMult)]);
     enemies.push([EnemyType.Healer, Math.floor(3 * totalMult)]);
     if (waveNumber > 40) {
-      enemies.push([EnemyType.Flying, Math.floor(6 * totalMult)]);
+      enemies.push([EnemyType.Flying, Math.floor(4 * totalMult)]);
       enemies.push([EnemyType.Berserker, Math.floor(5 * totalMult)]);
       enemies.push([EnemyType.Splitter, Math.floor(4 * totalMult)]);
     }
@@ -471,7 +471,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     enemies.push([EnemyType.Fast, Math.floor(8 * totalMult)]);
     props.tags = ['berserker', 'fast'];
   } else if (waveNumber === 18) {
-    enemies.push([EnemyType.Flying, Math.floor(12 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(8 * totalMult)]);
     props.name = 'Aerial Assault';
     props.tags = ['flying'];
   } else if (waveNumber === 19) {
@@ -485,7 +485,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     props.name = 'Fortified Healers';
     props.tags = ['armored', 'healer'];
   } else if (waveNumber === 22) {
-    enemies.push([EnemyType.Flying, Math.floor(10 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(7 * totalMult)]);
     enemies.push([EnemyType.Berserker, Math.floor(8 * totalMult)]);
     props.tags = ['flying', 'berserker'];
   } else if (waveNumber === 23) {
@@ -509,7 +509,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     props.name = 'Flood';
     props.tags = ['swarm', 'fast'];
   } else if (waveNumber === 27) {
-    enemies.push([EnemyType.Flying, Math.floor(15 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(10 * totalMult)]);
     enemies.push([EnemyType.MagicResist, Math.floor(8 * totalMult)]);
     props.name = 'Sky Fortress';
     props.tags = ['flying', 'magic_resist'];
@@ -524,7 +524,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     props.name = 'Wall of Steel';
     props.tags = ['tank', 'armored', 'magic_resist'];
   } else if (waveNumber === 31) {
-    enemies.push([EnemyType.Flying, Math.floor(15 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(10 * totalMult)]);
     enemies.push([EnemyType.Healer, Math.floor(8 * totalMult)]);
     props.name = 'Healing Wings';
     props.tags = ['flying', 'healer'];
@@ -543,7 +543,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     props.name = 'Fortress';
     props.tags = ['armored', 'tank', 'healer'];
   } else if (waveNumber === 35) {
-    enemies.push([EnemyType.Flying, Math.floor(15 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(10 * totalMult)]);
     enemies.push([EnemyType.Berserker, Math.floor(12 * totalMult)]);
     enemies.push([EnemyType.Splitter, Math.floor(8 * totalMult)]);
     props.name = 'Chaos';
@@ -560,7 +560,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     props.name = 'Onslaught';
     props.tags = ['tank', 'healer', 'berserker'];
   } else if (waveNumber === 38) {
-    enemies.push([EnemyType.Flying, Math.floor(20 * totalMult)]);
+    enemies.push([EnemyType.Flying, Math.floor(12 * totalMult)]);
     enemies.push([EnemyType.Swarm, Math.floor(30 * totalMult)]);
     props.name = 'Air & Ground';
     props.tags = ['flying', 'swarm'];
@@ -579,7 +579,7 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     if (waveNumber > 40) {
       enemies.push([EnemyType.Splitter, Math.floor(3 * totalMult)]);
       enemies.push([EnemyType.Tank, Math.floor(2 * totalMult)]);
-      enemies.push([EnemyType.Flying, Math.floor(3 * totalMult)]);
+      enemies.push([EnemyType.Flying, Math.floor(2 * totalMult)]);
     }
     if (waveNumber > 50) {
       enemies.push([EnemyType.Berserker, Math.floor(4 * totalMult)]);
