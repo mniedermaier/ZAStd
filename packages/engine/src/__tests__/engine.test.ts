@@ -1524,7 +1524,7 @@ describe('Send Gold', () => {
 });
 
 describe('Tutorial', () => {
-  it('uses simplified waves (5 waves)', () => {
+  it('uses simplified waves (12 waves)', () => {
     const gs = new GameState();
     gs.isTutorial = true;
     gs.addPlayer('p1', 'Alice');
@@ -1535,14 +1535,23 @@ describe('Tutorial', () => {
     expect(wave.properties?.tags).toContain('tutorial');
   });
 
-  it('declares victory at wave 5', () => {
+  it('declares victory at wave 12', () => {
+    const gs = new GameState();
+    gs.isTutorial = true;
+    gs.addPlayer('p1', 'Alice');
+    gs.startGame();
+    gs.waveNumber = 12;
+    expect(gs.checkVictory()).toBe(true);
+    expect(gs.phase).toBe(GamePhase.Victory);
+  });
+
+  it('does not declare victory before wave 12', () => {
     const gs = new GameState();
     gs.isTutorial = true;
     gs.addPlayer('p1', 'Alice');
     gs.startGame();
     gs.waveNumber = 5;
-    expect(gs.checkVictory()).toBe(true);
-    expect(gs.phase).toBe(GamePhase.Victory);
+    expect(gs.checkVictory()).toBe(false);
   });
 
   it('includes isTutorial in serialization', () => {

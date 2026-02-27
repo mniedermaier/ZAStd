@@ -18,8 +18,8 @@ export function WaveInfo({ onStartWave }: WaveInfoProps) {
 
   const wave = snapshot.currentWave;
   const phase = snapshot.phase;
-  const canStart = phase === 'playing' || phase === 'wave_complete';
-  const isWaveActive = phase === 'wave_active';
+  const allSpawned = wave ? wave.spawned >= wave.totalEnemies : false;
+  const canStart = phase === 'playing' || phase === 'wave_complete' || (phase === 'wave_active' && allSpawned);
   const cooldownActive = snapshot.manualStartCooldown !== null && snapshot.manualStartCooldown > 0;
 
   const nextWave = snapshot.waveNumber + 1;
@@ -38,7 +38,7 @@ export function WaveInfo({ onStartWave }: WaveInfoProps) {
       pointerEvents: 'auto',
     }}>
       {/* Active wave info */}
-      {wave && isWaveActive && (
+      {wave && phase === 'wave_active' && (
         <div>
           <div style={{ fontWeight: 700, color: '#44bbff', marginBottom: 4 }}>
             {wave.properties?.name || `Wave ${wave.waveNumber}`}
@@ -82,7 +82,7 @@ export function WaveInfo({ onStartWave }: WaveInfoProps) {
       )}
 
       {/* Send wave early / auto-start countdown */}
-      {canStart && !isWaveActive && (
+      {canStart && (
         <div style={{ marginBottom: hasNextPreview ? 6 : 0 }}>
           {snapshot.nextWaveCountdown !== null && (
             <div style={{ fontSize: 10, color: '#8888aa', textAlign: 'center', marginBottom: 4 }}>

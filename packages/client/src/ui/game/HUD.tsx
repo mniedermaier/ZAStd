@@ -21,7 +21,9 @@ export function HUD({ playerId, onStartWave }: HUDProps) {
   const playerCount = Object.keys(snapshot.players).length;
 
   const phase = snapshot.phase;
-  const canStartWave = phase === 'playing' || phase === 'wave_complete';
+  const wave = snapshot.currentWave;
+  const allSpawned = wave ? wave.spawned >= wave.totalEnemies : false;
+  const canStartWave = phase === 'playing' || phase === 'wave_complete' || (phase === 'wave_active' && allSpawned);
   const cooldownActive = snapshot.manualStartCooldown !== null && snapshot.manualStartCooldown > 0;
 
   return (

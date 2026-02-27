@@ -98,11 +98,11 @@ export class GameLoop {
       });
     }
 
-    // Auto-start wave timer
-    if (this.gameState.phase === GamePhase.Playing || this.gameState.phase === GamePhase.WaveComplete) {
+    // Auto-start wave timer (also during WaveActive once all enemies spawned)
+    if (this.gameState.phase === GamePhase.Playing || this.gameState.phase === GamePhase.WaveComplete || this.gameState.phase === GamePhase.WaveActive) {
       if (this.gameState.nextWaveAutoStartTime !== null && currentTime >= this.gameState.nextWaveAutoStartTime) {
-        const waveActive = this.gameState.currentWave?.started && !this.gameState.currentWave.completed;
-        if (!waveActive) {
+        const spawningActive = this.gameState.currentWave?.started && !this.gameState.currentWave.completed;
+        if (!spawningActive) {
           const wave = this.gameState.startNextWave();
           const totalEnemies = wave.enemies.reduce((s, [, c]) => s + c, 0);
           const event: GameEvent = {
@@ -203,7 +203,12 @@ export class GameLoop {
     // Projectiles
     this._updateProjectiles(deltaTime, currentTime);
 
-    // Wave completion
+    // Once all enemies spawned, allow sending next wave early
+    if (this.gameState.currentWave?.completed && this.gameState.nextWaveAutoStartTime === null && this.gameState.enemies.size > 0) {
+      this.gameState.nextWaveAutoStartTime = Date.now() / 1000 + this.gameState.autoStartDelay;
+    }
+
+    // Wave completion (income/rewards when all enemies dead)
     if (this.gameState.currentWave?.completed && this.gameState.enemies.size === 0) {
       this._completeWave();
     }

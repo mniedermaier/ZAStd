@@ -6,7 +6,7 @@ import { OccupancyGrid, Path, updateEnemyPosition, getFlyingPath } from './pathf
 import { getAvailableTowers, getRegularTowers, isUltimateTower, COMMON_TOWERS, GOVERNORS, TOWER_TO_GOVERNOR } from './governor';
 import {
   MAX_PLAYERS, MAP_SIZES, VALID_MAP_SIZES, VALID_DIFFICULTIES,
-  AUTO_START_DELAY, MANUAL_START_COOLDOWN, VICTORY_WAVE,
+  AUTO_START_DELAY, INITIAL_BUILD_TIME, MANUAL_START_COOLDOWN, VICTORY_WAVE,
   STARTING_MONEY, STARTING_LIVES, MAP_WAYPOINTS, MAP_SPAWN_END,
   DIFFICULTY_SCALING, TOWER_SELL_COOLDOWN, ABILITY_DEFINITIONS,
   SYNERGY_DEFINITIONS, VALID_MAP_LAYOUTS, CREEP_SEND_BY_TYPE,
@@ -582,7 +582,7 @@ export class GameState {
   startGame(): void {
     this.phase = GamePhase.Playing;
     this.gameStartTime = Date.now() / 1000;
-    this.nextWaveAutoStartTime = Date.now() / 1000 + this.autoStartDelay;
+    this.nextWaveAutoStartTime = Date.now() / 1000 + INITIAL_BUILD_TIME;
     // Apply difficulty starting money multiplier
     const ds = this.difficultyScaling;
     if (ds.startingMoneyMult !== 1.0) {
@@ -602,7 +602,7 @@ export class GameState {
 
   checkVictory(): boolean {
     if (this.endlessMode) return false;
-    const victoryWave = this.isTutorial ? 5 : VICTORY_WAVE;
+    const victoryWave = this.isTutorial ? TUTORIAL_WAVES.length : VICTORY_WAVE;
     if (this.waveNumber >= victoryWave && this.enemies.size === 0) {
       this.phase = GamePhase.Victory;
       return true;

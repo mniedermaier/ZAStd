@@ -7,6 +7,7 @@ export const STARTING_MONEY = 100;
 export const STARTING_LIVES = 30;
 
 // Wave Configuration
+export const INITIAL_BUILD_TIME = 20.0;
 export const AUTO_START_DELAY = 10.0;
 export const MANUAL_START_COOLDOWN = 5.0;
 export const VICTORY_WAVE = 40;
@@ -146,19 +147,44 @@ export const CREEP_SEND_DEFINITIONS: CreepSendDefinition[] = [
 
 // Tutorial
 export const TUTORIAL_WAVES: [string, number][] = [
-  ['basic', 5],
-  ['basic', 8],
-  ['fast', 6],
-  ['basic', 10],
-  ['tank', 3],
+  ['basic', 5],           // Wave 1: Learn placement
+  ['basic', 8],           // Wave 2: Upgrading & selling
+  ['fast', 8],            // Wave 3: Fast enemies → Frost Trap
+  ['basic', 10],          // Wave 4: Governor towers (Fire Arrow)
+  ['tank', 4],            // Wave 5: Tanks + lumber award
+  ['armored', 6],         // Wave 6: Armored (physical resist)
+  ['magic_resist', 6],    // Wave 7: Magic resist
+  ['flying', 8],          // Wave 8: Flying (ignore maze)
+  ['healer', 4],          // Wave 9: Healers (regen)
+  ['berserker', 6],       // Wave 10: Berserkers + lumber #2
+  ['splitter', 5],        // Wave 11: Splitters
+  ['boss', 1],            // Wave 12: Boss fight
 ];
 
-export const TUTORIAL_HINTS = [
-  { step: 1, text: 'Place an Arrow Tower on the grid', trigger: 'tower_placed' },
-  { step: 2, text: 'Start the wave by pressing Space or clicking Send Wave', trigger: 'wave_started' },
-  { step: 3, text: 'Upgrade your tower by selecting it and pressing Q', trigger: 'tower_upgraded' },
-  { step: 4, text: 'Build a maze to extend the enemy path', trigger: 'towers_3' },
-  { step: 5, text: "Great job! You're ready for real games!", trigger: 'wave_5_complete' },
+export const TUTORIAL_HINTS: { step: number; text: string; trigger: string; subtext?: string; phase?: string }[] = [
+  { step: 1, phase: 'Basics', text: 'Place an Arrow Tower on the grid', subtext: 'Press 1 or click Arrow (10g). Towers block the path to create a maze.', trigger: 'tower_placed' },
+  { step: 2, text: 'Start the first wave', subtext: 'Press Space or click Send Wave. Enemies walk from green spawn to red exit.', trigger: 'wave_started' },
+  { step: 3, text: 'Watch your towers attack! Wait for the wave to end.', subtext: 'Enemies killed give gold. If they reach the exit, you lose lives (30 total).', trigger: 'wave_1_complete' },
+  { step: 4, text: 'Select your tower and press Q to upgrade it', subtext: 'Click a tower then press Q. Upgrades boost damage +20%, range +10%. Max level 4.', trigger: 'tower_upgraded' },
+  { step: 5, text: 'Try selling a tower — select it and press E', subtext: 'Selling returns 70% of gold invested. Useful for rearranging your maze.', trigger: 'tower_sold' },
+  { step: 6, text: 'Build 3+ towers to extend the maze path', subtext: 'Longer paths = more shots from your towers. The path must always remain open!', trigger: 'towers_3' },
+  { step: 7, text: 'Send Wave 2 and see your maze in action', subtext: 'You earn gold per wave: 40 + 8×wave. Plus interest on savings each wave!', trigger: 'wave_2_complete' },
+  { step: 8, text: 'Wave 3 brings Fast enemies — twice the speed!', subtext: 'Build a Frost Trap (press 3, 50g) to slow them down.', trigger: 'wave_3_complete' },
+  { step: 9, phase: 'Governor Towers', text: 'You have the Fire Governor! Press 4 to build a Fire Arrow', subtext: 'Each governor has 4 unique towers. Fire Arrow (35g) deals magic damage.', trigger: 'governor_tower_placed' },
+  { step: 10, text: 'Send Wave 4 — see magic damage in action', subtext: 'Common towers deal physical damage. Governor towers deal magic damage.', trigger: 'wave_4_complete' },
+  { step: 11, phase: 'Economy', text: 'Wave 5: Tank enemies — very high HP, very slow', subtext: 'Focus fire with many towers. You earn Lumber every 5 waves for tech upgrades!', trigger: 'wave_5_complete' },
+  { step: 12, text: 'You earned Lumber! Open Tech panel and buy an upgrade', subtext: 'Tech upgrades are permanent: +damage, +range, +interest, -cost, or unlock ultimate tower.', trigger: 'tech_bought' },
+  { step: 13, phase: 'Damage Types', text: 'Wave 6: Armored enemies resist 50% physical damage!', subtext: 'Use Fire towers (magic damage) against them. Mix damage types!', trigger: 'wave_6_complete' },
+  { step: 14, text: 'Wave 7: Magic Resist enemies resist 50% magic damage!', subtext: 'Use Arrow and Cannon (physical) against these. A good defense needs both!', trigger: 'wave_7_complete' },
+  { step: 15, phase: 'Tower Control', text: 'Select a tower and change its targeting mode', subtext: 'Options: First, Last, Closest, Strongest, Weakest. Click targeting in the tower info panel.', trigger: 'targeting_changed' },
+  { step: 16, phase: 'Special Enemies', text: 'Wave 8: Flying enemies ignore your maze!', subtext: 'They fly direct to exit. Place towers near their flight path.', trigger: 'wave_8_complete' },
+  { step: 17, text: 'Wave 9: Healers regenerate HP! Kill them first.', subtext: 'High burst damage counters healing. Poison reduces healing by 50%.', trigger: 'wave_9_complete' },
+  { step: 18, phase: 'Governor Ability', text: 'Use your Governor Ability! Click the ability button.', subtext: 'Fire: Meteor Strike — 300 magic damage in a large area. 75s cooldown.', trigger: 'ability_used' },
+  { step: 19, text: 'Wave 10: Berserkers get faster with every hit!', subtext: 'Kill them quickly. High damage towers like Cannon and Inferno work best.', trigger: 'wave_10_complete' },
+  { step: 20, phase: 'Advanced', text: 'Build an Inferno tower (press 5, 80g) — splash + stun!', subtext: 'Tier 2 governor towers have powerful effects: splash, chain, stun, poison, execute.', trigger: 'tier2_tower_placed' },
+  { step: 21, text: 'Wave 11: Splitters break into 2 Basic enemies on death!', subtext: 'Splash damage towers handle splits well.', trigger: 'wave_11_complete' },
+  { step: 22, phase: 'Boss Fight', text: 'BOSS WAVE! High HP, armor AND magic resist!', subtext: 'Use everything: abilities, upgrades, both damage types. Final test!', trigger: 'wave_12_complete' },
+  { step: 23, text: "Congratulations! You've mastered the basics!", subtext: 'Real games: 40 waves, 8 governors, synergies, elite enemies, multiplayer. Try Solo mode!', trigger: 'tutorial_complete' },
 ];
 
 // Vote timing

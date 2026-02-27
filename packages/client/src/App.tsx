@@ -643,10 +643,10 @@ function SoloMode() {
       if (e.key === 'Escape') {
         if (useSettingsStore.getState().showHelp) {
           setShowHelp(false);
+        } else if (useUIStore.getState().placementMode) {
+          cancelPlacement();
         } else if (inGame) {
           togglePause();
-        } else {
-          cancelPlacement();
         }
       }
       if (e.key === 'h' || e.key === 'H') {
@@ -1002,10 +1002,10 @@ function DailyMode() {
       if (e.key === 'Escape') {
         if (useSettingsStore.getState().showHelp) {
           setShowHelp(false);
+        } else if (useUIStore.getState().placementMode) {
+          cancelPlacement();
         } else if (inGame) {
           togglePause();
-        } else {
-          cancelPlacement();
         }
       }
       if (e.key === 'h' || e.key === 'H') {
@@ -1373,10 +1373,10 @@ function EndlessMode() {
       if (e.key === 'Escape') {
         if (useSettingsStore.getState().showHelp) {
           setShowHelp(false);
+        } else if (useUIStore.getState().placementMode) {
+          cancelPlacement();
         } else if (inGame) {
           togglePause();
-        } else {
-          cancelPlacement();
         }
       }
       if (e.key === 'h' || e.key === 'H') {
@@ -1644,10 +1644,10 @@ function MultiplayerMode() {
       if (e.key === 'Escape') {
         if (useSettingsStore.getState().showHelp) {
           setShowHelp(false);
+        } else if (useUIStore.getState().placementMode) {
+          cancelPlacement();
         } else if (inGame) {
           togglePause();
-        } else {
-          cancelPlacement();
         }
       }
       if (e.key === 'h' || e.key === 'H') {
@@ -1768,25 +1768,51 @@ function TutorialMode() {
   const gameLoopRef = useRef<GameLoop | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const setSnapshot = useGameStore((s) => s.setSnapshot);
-  const appPhase = useLobbyStore((s) => s.appPhase);
   const setAppPhase = useLobbyStore((s) => s.setAppPhase);
   const playerName = useLobbyStore((s) => s.playerName);
   const cancelPlacement = useUIStore((s) => s.cancelPlacement);
   const togglePause = useSettingsStore((s) => s.togglePause);
   const setShowHelp = useSettingsStore((s) => s.setShowHelp);
   const setIsPaused = useSettingsStore((s) => s.setIsPaused);
-  const inGame = appPhase === 'tutorial_game';
+  const inGame = true; // Skip lobby, go straight to game
+  const tutorialGrantsRef = useRef<Set<string>>(new Set());
 
   const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number } | null>(null);
 
+  // Skip lobby: auto-assign Fire governor and start game immediately
   useEffect(() => {
     gameState.addPlayer(SOLO_PLAYER_ID, playerName || 'Player');
+    gameState.selectGovernor(SOLO_PLAYER_ID, 'fire');
+    gameState.setPlayerReady(SOLO_PLAYER_ID, true);
+    gameState.startGame();
+    gameState.autoStartDelay = 9999; // Disable auto-start so player must manually send each wave
+    const loop = new GameLoop(gameState);
+    gameLoopRef.current = loop;
+    stopRef.current = loop.start();
+    setAppPhase('tutorial_game');
     setSnapshot(gameState.serialize());
   }, []);
 
   useEffect(() => {
-    if (!inGame) return;
     const interval = setInterval(() => {
+      // Resource safety-net grants
+      const player = gameState.players.get(SOLO_PLAYER_ID);
+      if (player) {
+        const waveActive = gameState.currentWave?.started && !gameState.currentWave?.completed;
+        if (!waveActive) {
+          // After wave 3: grant 50g if money < 50 (for governor tower)
+          if (gameState.waveNumber >= 3 && player.money < 50 && !tutorialGrantsRef.current.has('wave3_gold')) {
+            player.addMoney(50 - player.money + 10);
+            tutorialGrantsRef.current.add('wave3_gold');
+          }
+          // After wave 10: grant 100g if money < 100 (for tier 2 tower)
+          if (gameState.waveNumber >= 10 && player.money < 100 && !tutorialGrantsRef.current.has('wave10_gold')) {
+            player.addMoney(100 - player.money + 20);
+            tutorialGrantsRef.current.add('wave10_gold');
+          }
+        }
+      }
+
       const snap = gameState.serialize();
       setSnapshot(snap);
 
@@ -1802,29 +1828,7 @@ function TutorialMode() {
       }
     }, 50);
     return () => clearInterval(interval);
-  }, [inGame, gameState, setSnapshot]);
-
-  const handleSelectGovernor = useCallback((element: string) => {
-    gameState.selectGovernor(SOLO_PLAYER_ID, element);
-    setSnapshot(gameState.serialize());
   }, [gameState, setSnapshot]);
-
-  const handleReady = useCallback(() => {
-    const player = gameState.players.get(SOLO_PLAYER_ID);
-    if (player) {
-      gameState.setPlayerReady(SOLO_PLAYER_ID, !player.ready);
-      setSnapshot(gameState.serialize());
-    }
-  }, [gameState, setSnapshot]);
-
-  const handleStartGame = useCallback(() => {
-    gameState.startGame();
-    const loop = new GameLoop(gameState);
-    gameLoopRef.current = loop;
-    stopRef.current = loop.start();
-    setAppPhase('tutorial_game');
-    setSnapshot(gameState.serialize());
-  }, [gameState, setAppPhase, setSnapshot]);
 
   const handlePlaceTower = useCallback((data: { x: number; y: number; towerType: string }) => {
     const [canPlace, reason] = gameState.canPlaceTower(SOLO_PLAYER_ID, data.x, data.y, data.towerType as TowerType);
@@ -1901,8 +1905,8 @@ function TutorialMode() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'Escape') {
         if (useSettingsStore.getState().showHelp) setShowHelp(false);
+        else if (useUIStore.getState().placementMode) cancelPlacement();
         else if (inGame) togglePause();
-        else cancelPlacement();
       }
       if (useSettingsStore.getState().isPaused || useSettingsStore.getState().showHelp) return;
       if (e.key === ' ' && inGame) { e.preventDefault(); handleStartWave(); }
@@ -1928,32 +1932,6 @@ function TutorialMode() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [cancelPlacement, inGame, handleStartWave, handleUpgradeTower, handleSellTower, gameState, togglePause, setShowHelp]);
-
-  const snapshot = useGameStore((s) => s.snapshot);
-
-  if (!inGame) {
-    const players: Record<string, { name: string; governor: string | null; ready: boolean }> = {};
-    if (snapshot) {
-      for (const [pid, p] of Object.entries(snapshot.players)) {
-        players[pid] = { name: p.name, governor: p.governor, ready: p.ready };
-      }
-    }
-
-    return (
-      <LobbyPage
-        playerId={SOLO_PLAYER_ID}
-        players={players}
-        onSelectGovernor={handleSelectGovernor}
-        onReady={handleReady}
-        onStartGame={handleStartGame}
-        onUpdateSettings={() => {}}
-        settings={snapshot?.settings ?? { mapSize: 'tiny', mapLayout: 'classic', difficulty: 'easy', moneySharing: false }}
-        allReady={gameState.allPlayersReady()}
-        isHost={true}
-        onLeave={() => setAppPhase('main_menu')}
-      />
-    );
-  }
 
   return (
     <>
@@ -2107,7 +2085,7 @@ function WeeklyMode() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'Escape') { if (useSettingsStore.getState().showHelp) setShowHelp(false); else if (inGame) togglePause(); else cancelPlacement(); }
+      if (e.key === 'Escape') { if (useSettingsStore.getState().showHelp) setShowHelp(false); else if (useUIStore.getState().placementMode) cancelPlacement(); else if (inGame) togglePause(); }
       if (e.key === 'h' || e.key === 'H') { if (inGame) setShowHelp(!useSettingsStore.getState().showHelp); }
       if (useSettingsStore.getState().isPaused || useSettingsStore.getState().showHelp) return;
       if (e.key === ' ' && inGame) { e.preventDefault(); handleStartWave(); }
