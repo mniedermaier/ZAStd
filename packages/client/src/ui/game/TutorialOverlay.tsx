@@ -28,13 +28,13 @@ function evaluateTrigger(
 
   const myTowers = Object.values(snapshot.towers).filter(t => t.ownerId === playerId);
   const towerCount = myTowers.length;
-  const waveActive = snapshot.currentWave?.started && !snapshot.currentWave?.completed;
 
-  // wave_N_complete triggers
+  // wave_N_complete: check phase directly — _completeWave() nulls currentWave,
+  // so checking currentWave.completed is unreliable
   const waveMatch = trigger.match(/^wave_(\d+)_complete$/);
   if (waveMatch) {
     const targetWave = parseInt(waveMatch[1]);
-    return snapshot.waveNumber >= targetWave && !waveActive;
+    return snapshot.waveNumber >= targetWave && snapshot.phase !== 'wave_active';
   }
 
   switch (trigger) {
@@ -81,6 +81,18 @@ export function TutorialOverlay({ playerId }: TutorialOverlayProps) {
   const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const snapshot = useGameStore((s) => s.snapshot);
 
+  const advanceToStep = useCallback((nextStep: number) => {
+    setCurrentStep(nextStep);
+    if (nextStep < TUTORIAL_HINTS.length) {
+      const nextHint = TUTORIAL_HINTS[nextStep];
+      if (nextHint.phase && nextHint.phase !== lastPhase) {
+        setLastPhase(nextHint.phase);
+        setShowPhaseHeader(true);
+        setTimeout(() => setShowPhaseHeader(false), 2000);
+      }
+    }
+  }, [lastPhase]);
+
   useEffect(() => {
     if (!snapshot || dismissed) return;
     if (currentStep >= TUTORIAL_HINTS.length) return;
@@ -99,20 +111,9 @@ export function TutorialOverlay({ playerId }: TutorialOverlayProps) {
     }
 
     if (evaluateTrigger(hint.trigger, snapshot, playerId, maxTowerCountRef)) {
-      const nextStep = currentStep + 1;
-      setCurrentStep(nextStep);
-
-      // Show phase header if new phase
-      if (nextStep < TUTORIAL_HINTS.length) {
-        const nextHint = TUTORIAL_HINTS[nextStep];
-        if (nextHint.phase && nextHint.phase !== lastPhase) {
-          setLastPhase(nextHint.phase);
-          setShowPhaseHeader(true);
-          setTimeout(() => setShowPhaseHeader(false), 2000);
-        }
-      }
+      advanceToStep(currentStep + 1);
     }
-  }, [snapshot, currentStep, playerId, dismissed, lastPhase]);
+  }, [snapshot, currentStep, playerId, dismissed, advanceToStep]);
 
   // Cleanup timer
   useEffect(() => {
@@ -131,10 +132,24 @@ export function TutorialOverlay({ playerId }: TutorialOverlayProps) {
     }
   }, []);
 
-  const handleSkip = useCallback(() => {
+  const handleSkipTutorial = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, 'true');
     setDismissed(true);
   }, []);
+
+  const handleSkipStep = useCallback(() => {
+    if (completeTimerRef.current) {
+      clearTimeout(completeTimerRef.current);
+      completeTimerRef.current = null;
+    }
+    const nextStep = currentStep + 1;
+    if (nextStep >= TUTORIAL_HINTS.length) {
+      localStorage.setItem(STORAGE_KEY, 'true');
+      setDismissed(true);
+    } else {
+      advanceToStep(nextStep);
+    }
+  }, [currentStep, advanceToStep]);
 
   if (dismissed || currentStep >= TUTORIAL_HINTS.length) return null;
 
@@ -209,22 +224,37 @@ export function TutorialOverlay({ playerId }: TutorialOverlayProps) {
         }} />
       </div>
 
-      {/* Skip button */}
-      <button
-        onClick={handleSkip}
-        style={{
-          marginTop: 8,
-          padding: '3px 12px',
-          fontSize: 10,
-          color: '#8888aa',
-          background: 'transparent',
-          border: '1px solid #333366',
-          borderRadius: 4,
-          cursor: 'pointer',
-        }}
-      >
-        Skip Tutorial
-      </button>
+      {/* Buttons */}
+      <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', gap: 8 }}>
+        <button
+          onClick={handleSkipStep}
+          style={{
+            padding: '3px 12px',
+            fontSize: 10,
+            color: '#44bbff',
+            background: 'transparent',
+            border: '1px solid #335577',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          Skip Step
+        </button>
+        <button
+          onClick={handleSkipTutorial}
+          style={{
+            padding: '3px 12px',
+            fontSize: 10,
+            color: '#8888aa',
+            background: 'transparent',
+            border: '1px solid #333366',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          Skip Tutorial
+        </button>
+      </div>
     </div>
   );
 }
