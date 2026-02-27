@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useGameStore } from '../../stores/game-store';
 
 interface PauseMenuProps {
   onResume: () => void;
@@ -18,6 +20,17 @@ export function PauseMenu({ onResume, onHelp, onQuit, isSolo }: PauseMenuProps) 
   const setColorblindMode = useSettingsStore((s) => s.setColorblindMode);
   const gameSpeed = useSettingsStore((s) => s.gameSpeed);
   const setGameSpeed = useSettingsStore((s) => s.setGameSpeed);
+  const graphicsQuality = useSettingsStore((s) => s.graphicsQuality);
+  const setGraphicsQuality = useSettingsStore((s) => s.setGraphicsQuality);
+  const screenShake = useSettingsStore((s) => s.screenShake);
+  const setScreenShake = useSettingsStore((s) => s.setScreenShake);
+  const blueprints = useSettingsStore((s) => s.blueprints);
+  const saveBlueprint = useSettingsStore((s) => s.saveBlueprint);
+  const deleteBlueprint = useSettingsStore((s) => s.deleteBlueprint);
+  const loadBlueprintAction = useSettingsStore((s) => s.loadBlueprint);
+  const snapshot = useGameStore((s) => s.snapshot);
+  const [showBlueprints, setShowBlueprints] = useState(false);
+  const [bpName, setBpName] = useState('');
 
   return (
     <div style={{
@@ -99,6 +112,150 @@ export function PauseMenu({ onResume, onHelp, onQuit, isSolo }: PauseMenuProps) 
             </div>
           </div>
         )}
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+          padding: '8px 0',
+        }}>
+          <span style={{ fontSize: 13, color: '#e0e0f0' }}>Graphics</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['low', 'med', 'high'] as const).map(q => (
+              <button
+                key={q}
+                onClick={() => setGraphicsQuality(q)}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 12,
+                  background: graphicsQuality === q ? 'rgba(68, 187, 255, 0.2)' : 'rgba(26, 26, 58, 0.9)',
+                  border: `1px solid ${graphicsQuality === q ? '#44bbff' : '#333366'}`,
+                  color: graphicsQuality === q ? '#44bbff' : '#8888aa',
+                  textTransform: 'capitalize',
+                }}
+              >
+                {q === 'med' ? 'Med' : q === 'low' ? 'Low' : 'High'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+          padding: '8px 0',
+        }}>
+          <span style={{ fontSize: 13, color: '#e0e0f0' }}>Screen Shake</span>
+          <button
+            onClick={() => setScreenShake(!screenShake)}
+            style={{
+              padding: '4px 12px',
+              fontSize: 12,
+              background: screenShake ? 'rgba(68, 187, 255, 0.2)' : 'rgba(26, 26, 58, 0.9)',
+              border: `1px solid ${screenShake ? '#44bbff' : '#333366'}`,
+              color: screenShake ? '#44bbff' : '#8888aa',
+            }}
+          >
+            {screenShake ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        {/* Blueprints */}
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => setShowBlueprints(!showBlueprints)}
+            style={{
+              width: '100%', padding: '6px 12px', fontSize: 12,
+              background: showBlueprints ? 'rgba(68, 187, 255, 0.15)' : 'transparent',
+              border: '1px solid #333366', color: showBlueprints ? '#44bbff' : '#8888aa',
+            }}
+          >
+            Blueprints {showBlueprints ? '\u25B2' : '\u25BC'}
+          </button>
+          {showBlueprints && (
+            <div style={{
+              marginTop: 8, padding: '8px 10px',
+              background: 'rgba(26, 26, 58, 0.4)', borderRadius: 6,
+              border: '1px solid #222244',
+            }}>
+              {/* Save current layout */}
+              <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                <input
+                  value={bpName}
+                  onChange={(e) => setBpName(e.target.value)}
+                  placeholder="Blueprint name"
+                  maxLength={20}
+                  style={{ flex: 1, fontSize: 11, padding: '4px 6px' }}
+                />
+                <button
+                  onClick={() => {
+                    if (!snapshot || !bpName.trim()) return;
+                    const spawn = snapshot.map.spawn;
+                    const towers = Object.values(snapshot.towers).map(t => ({
+                      relX: t.x - spawn[0],
+                      relY: t.y - spawn[1],
+                      towerType: t.towerType,
+                    }));
+                    if (towers.length === 0) return;
+                    saveBlueprint(bpName.trim(), towers);
+                    setBpName('');
+                  }}
+                  style={{
+                    padding: '4px 8px', fontSize: 11, minHeight: 'auto',
+                    background: 'rgba(68, 255, 136, 0.1)',
+                    border: '1px solid #44ff88', color: '#44ff88',
+                  }}
+                >
+                  Save Layout
+                </button>
+              </div>
+
+              {/* List saved blueprints */}
+              {blueprints.length === 0 ? (
+                <div style={{ fontSize: 11, color: '#8888aa', textAlign: 'center', padding: 4 }}>
+                  No saved blueprints
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflowY: 'auto' }}>
+                  {blueprints.map(bp => (
+                    <div key={bp.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '3px 6px', background: 'rgba(10, 10, 26, 0.5)',
+                      borderRadius: 4, border: '1px solid #222244',
+                    }}>
+                      <span style={{ flex: 1, fontSize: 11, color: '#e0e0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {bp.name} <span style={{ color: '#8888aa' }}>({bp.towers.length})</span>
+                      </span>
+                      <button
+                        onClick={() => { loadBlueprintAction(bp.id); onResume(); }}
+                        style={{
+                          padding: '2px 6px', fontSize: 10, minHeight: 'auto',
+                          background: 'rgba(68, 187, 255, 0.1)',
+                          border: '1px solid #44bbff', color: '#44bbff',
+                        }}
+                      >
+                        Load
+                      </button>
+                      <button
+                        onClick={() => deleteBlueprint(bp.id)}
+                        style={{
+                          padding: '2px 6px', fontSize: 10, minHeight: 'auto',
+                          background: 'rgba(255, 68, 102, 0.1)',
+                          border: '1px solid #ff4466', color: '#ff4466',
+                        }}
+                      >
+                        Del
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button className="primary" onClick={onResume} style={{ width: '100%', padding: '10px 20px' }}>

@@ -6,6 +6,22 @@ import { shareScore } from '../../utils/share';
 type SortKey = 'wave' | 'kills' | 'damageDealt' | 'towersPlaced' | 'date';
 type Tab = 'local' | 'global';
 type DifficultyFilter = 'all' | 'easy' | 'normal' | 'hard' | 'extreme';
+type ModeFilter = 'all' | 'daily' | 'weekly' | 'endless';
+
+function isSameDay(d1: Date, d2: Date): boolean {
+  return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+}
+
+function isSameWeek(d1: Date, d2: Date): boolean {
+  const startOfWeek = (d: Date) => {
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+    return new Date(d.getFullYear(), d.getMonth(), diff);
+  };
+  const w1 = startOfWeek(d1);
+  const w2 = startOfWeek(d2);
+  return w1.getFullYear() === w2.getFullYear() && w1.getMonth() === w2.getMonth() && w1.getDate() === w2.getDate();
+}
 
 interface LeaderboardPanelProps {
   onClose: () => void;
@@ -30,6 +46,7 @@ export function LeaderboardPanel({ onClose }: LeaderboardPanelProps) {
   const [sortAsc, setSortAsc] = useState(false);
   const [filter, setFilter] = useState<'all' | 'victory' | 'defeat'>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>('all');
+  const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
 
   const [globalEntries, setGlobalEntries] = useState<GlobalLeaderboardEntry[]>([]);
   const [globalLoading, setGlobalLoading] = useState(false);
@@ -48,6 +65,16 @@ export function LeaderboardPanel({ onClose }: LeaderboardPanelProps) {
     if (filter === 'victory') filtered = filtered.filter((e) => e.victory);
     if (filter === 'defeat') filtered = filtered.filter((e) => !e.victory);
 
+    // Mode filter
+    const now = new Date();
+    if (modeFilter === 'endless') {
+      filtered = filtered.filter((e) => (e as any).isEndless);
+    } else if (modeFilter === 'daily') {
+      filtered = filtered.filter((e) => isSameDay(new Date(e.date), now));
+    } else if (modeFilter === 'weekly') {
+      filtered = filtered.filter((e) => isSameWeek(new Date(e.date), now));
+    }
+
     return [...filtered].sort((a, b) => {
       let av: number, bv: number;
       switch (sortKey) {
@@ -60,7 +87,7 @@ export function LeaderboardPanel({ onClose }: LeaderboardPanelProps) {
       }
       return sortAsc ? av - bv : bv - av;
     });
-  }, [leaderboard, sortKey, sortAsc, filter]);
+  }, [leaderboard, sortKey, sortAsc, filter, modeFilter]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -168,7 +195,7 @@ export function LeaderboardPanel({ onClose }: LeaderboardPanelProps) {
 
         {tab === 'local' && (
           <>
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
               {(['all', 'victory', 'defeat'] as const).map((f) => (
                 <button
                   key={f}
@@ -182,6 +209,24 @@ export function LeaderboardPanel({ onClose }: LeaderboardPanelProps) {
                   }}
                 >
                   {f}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+              {(['all', 'daily', 'weekly', 'endless'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setModeFilter(m)}
+                  style={{
+                    padding: '3px 8px', fontSize: 10, minHeight: 'auto',
+                    background: modeFilter === m ? 'rgba(170, 68, 255, 0.15)' : 'transparent',
+                    border: modeFilter === m ? '1px solid #aa44ff' : '1px solid #333366',
+                    color: modeFilter === m ? '#aa44ff' : '#8888aa',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {m}
                 </button>
               ))}
             </div>

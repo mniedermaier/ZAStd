@@ -7,6 +7,7 @@ import {
   GOVERNORS, getAvailableTowers, getRegularTowers, isUltimateTower,
   TECH_UPGRADES, calculateInterest, shouldAwardLumber,
   GameLoop, EnemyInstance, createProjectile,
+  isEliteWave,
 } from '../index';
 import {
   CHAIN_INITIAL_MULT, CHAIN_DECAY_MULT, CHAIN_RANGE,
@@ -1620,5 +1621,157 @@ describe('Replay', () => {
       expect(syn.id).toBeTruthy();
       expect(syn.governors.length).toBe(2);
     }
+  });
+});
+
+describe('Elite Enemies', () => {
+  it('isEliteWave returns true for waves 5, 15, 25, 35, 45, 55', () => {
+    // isEliteWave imported from index
+    expect(isEliteWave(5)).toBe(true);
+    expect(isEliteWave(15)).toBe(true);
+    expect(isEliteWave(25)).toBe(true);
+    expect(isEliteWave(35)).toBe(true);
+    expect(isEliteWave(45)).toBe(true);
+    expect(isEliteWave(55)).toBe(true);
+  });
+
+  it('isEliteWave returns false for boss waves and other waves', () => {
+    // isEliteWave imported from index
+    expect(isEliteWave(10)).toBe(false);
+    expect(isEliteWave(20)).toBe(false);
+    expect(isEliteWave(30)).toBe(false);
+    expect(isEliteWave(40)).toBe(false);
+    expect(isEliteWave(1)).toBe(false);
+    expect(isEliteWave(3)).toBe(false);
+    expect(isEliteWave(0)).toBe(false);
+  });
+
+  it('juggernaut is immune to slow and stun', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 0, 0, 1, 0);
+    enemy.eliteAffix = 'juggernaut';
+    enemy.applySlow(0.5, 3, 10);
+    expect(enemy.slowMultiplier).toBe(1.0);
+    enemy.applyStun(2, 10);
+    expect(enemy.isStunned(11)).toBe(false);
+  });
+
+  it('shielded elite absorbs damage with shield before HP', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 0, 0, 1, 0);
+    enemy.eliteAffix = 'shielded';
+    enemy.shieldMaxHealth = 100;
+    enemy.shieldHealth = 100;
+    const startHp = enemy.currentHealth;
+    enemy.takeDamage(50);
+    expect(enemy.shieldHealth).toBe(50);
+    expect(enemy.currentHealth).toBe(startHp);
+  });
+
+  it('shielded elite: damage overflows from shield to HP', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 0, 0, 1, 0);
+    enemy.eliteAffix = 'shielded';
+    enemy.shieldMaxHealth = 30;
+    enemy.shieldHealth = 30;
+    const startHp = enemy.currentHealth;
+    enemy.takeDamage(50);
+    expect(enemy.shieldHealth).toBe(0);
+    expect(enemy.currentHealth).toBeLessThan(startHp);
+  });
+
+  it('shielded elite regenerates shield after delay', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 0, 0, 1, 0);
+    enemy.eliteAffix = 'shielded';
+    enemy.shieldMaxHealth = 100;
+    enemy.shieldHealth = 0;
+    enemy.lastDamageTime = 0;
+    // After delay has passed, shield should regen
+    enemy.updateShield(1, 10);
+    expect(enemy.shieldHealth).toBeGreaterThan(0);
+  });
+
+  it('shielded elite does not regen shield during delay', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 0, 0, 1, 0);
+    enemy.eliteAffix = 'shielded';
+    enemy.shieldMaxHealth = 100;
+    enemy.shieldHealth = 0;
+    enemy.lastDamageTime = 9; // 1 second ago
+    enemy.updateShield(1, 10); // within 3s delay
+    expect(enemy.shieldHealth).toBe(0);
+  });
+
+  it('phase shifter becomes invulnerable periodically', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 0, 0, 1, 0);
+    enemy.eliteAffix = 'phase_shifter';
+    enemy.phaseTimer = 0;
+    // Start of cycle: should be invulnerable
+    enemy.updatePhase(0.5);
+    expect(enemy.phaseActive).toBe(true);
+    expect(enemy.isInvulnerable()).toBe(true);
+    // After phase duration (1.5s), should be vulnerable
+    enemy.phaseTimer = 2.0;
+    enemy.updatePhase(0);
+    expect(enemy.phaseActive).toBe(false);
+    expect(enemy.isInvulnerable()).toBe(false);
+  });
+
+  it('phase shifter takeDamage returns false when invulnerable', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 0, 0, 1, 0);
+    enemy.eliteAffix = 'phase_shifter';
+    enemy.phaseActive = true;
+    const startHp = enemy.currentHealth;
+    const killed = enemy.takeDamage(999);
+    expect(killed).toBe(false);
+    expect(enemy.currentHealth).toBe(startHp);
+  });
+
+  it('elite fields are serialized and deserialized', () => {
+    const enemy = createEnemy(EnemyType.Tank, 'e1', 5, 5, 1, 0);
+    enemy.eliteAffix = 'shielded';
+    enemy.shieldHealth = 50;
+    enemy.shieldMaxHealth = 100;
+    const snap = enemy.serialize();
+    expect(snap.eliteAffix).toBe('shielded');
+    expect(snap.shieldHealth).toBe(50);
+    expect(snap.shieldMaxHealth).toBe(100);
+  });
+
+  it('non-elite enemies do not serialize elite fields', () => {
+    const enemy = createEnemy(EnemyType.Basic, 'e1', 0, 0, 1, 0);
+    const snap = enemy.serialize();
+    expect(snap.eliteAffix).toBeUndefined();
+    expect(snap.shieldHealth).toBeUndefined();
+    expect(snap.shieldMaxHealth).toBeUndefined();
+    expect(snap.phaseActive).toBeUndefined();
+  });
+
+  it('generateWave tags elite waves and assigns affix', () => {
+    const wave = generateWave(5, 1);
+    expect(wave.properties?.tags).toContain('elite');
+    expect(wave.properties?.eliteAffix).toBeTruthy();
+  });
+
+  it('generateWave does not tag non-elite waves', () => {
+    const wave = generateWave(3, 1);
+    expect(wave.properties?.tags).not.toContain('elite');
+    expect(wave.properties?.eliteAffix).toBeUndefined();
+  });
+
+  it('game state spawns elite enemy on elite wave', () => {
+    const gs = new GameState();
+    gs.addPlayer('p1', 'Alice');
+    gs.startGame();
+    gs.waveNumber = 4;
+    gs.startNextWave(); // wave 5
+    expect(gs.currentWave?.properties?.eliteAffix).toBeTruthy();
+    // Spawn first enemy, which should also spawn the elite
+    const currentTime = Date.now() / 1000;
+    gs.currentWave!.lastSpawnTime = currentTime - 1;
+    gs.spawnEnemyFromWave(currentTime);
+    // Should have 2 enemies: 1 normal + 1 elite
+    expect(gs.enemies.size).toBe(2);
+    const enemies = [...gs.enemies.values()];
+    const elite = enemies.find(e => e.eliteAffix !== null);
+    expect(elite).toBeTruthy();
+    expect(elite!.eliteAffix).toBe(gs.currentWave!.properties!.eliteAffix);
+    expect(elite!.enemyType).toBe(EnemyType.Tank);
   });
 });

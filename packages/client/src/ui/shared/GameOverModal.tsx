@@ -3,6 +3,7 @@ import { shareScore } from '../../utils/share';
 import type { Badge } from '../../stores/stats-store';
 import { useReplayStore } from '../../stores/replay-store';
 import type { ReplayData } from '@zastd/engine';
+import { GOVERNORS } from '@zastd/engine';
 
 interface GameOverModalProps {
   victory: boolean;
@@ -28,6 +29,11 @@ export function GameOverModal({ victory, stats, onClose, onRematch, waveReached,
   const totalKills = entries.reduce((sum, s) => sum + s.kills, 0);
   const totalDamage = entries.reduce((sum, s) => sum + s.damageDealt, 0);
   const totalTowers = entries.reduce((sum, s) => sum + s.towersPlaced, 0);
+
+  // MVP: player with highest damage dealt
+  const mvpName = entries.length > 1
+    ? entries.reduce((best, s) => s.damageDealt > best.damageDealt ? s : best).name
+    : null;
 
   const handleShare = async () => {
     const result = await shareScore({
@@ -104,17 +110,45 @@ export function GameOverModal({ victory, stats, onClose, onRematch, waveReached,
               <th style={{ textAlign: 'right', padding: 4 }}>Kills</th>
               <th style={{ textAlign: 'right', padding: 4 }}>Damage</th>
               <th style={{ textAlign: 'right', padding: 4 }}>Towers</th>
+              <th style={{ textAlign: 'right', padding: 4 }}>DPT</th>
             </tr>
           </thead>
           <tbody>
-            {entries.map((s, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid #1a1a3a' }}>
-                <td style={{ padding: 4 }}>{s.name}</td>
-                <td style={{ textAlign: 'right', padding: 4, color: '#cc88ff' }}>{s.kills}</td>
-                <td style={{ textAlign: 'right', padding: 4, color: '#ff8844' }}>{s.damageDealt}</td>
-                <td style={{ textAlign: 'right', padding: 4, color: '#44bbff' }}>{s.towersPlaced}</td>
+            {entries.map((s, i) => {
+              const isMvp = mvpName === s.name;
+              const govColor = s.governor && (GOVERNORS as Record<string, { color: string }>)[s.governor]?.color;
+              const dpt = Math.round(s.damageDealt / Math.max(1, s.towersPlaced));
+              return (
+                <tr key={i} style={{
+                  borderBottom: '1px solid #1a1a3a',
+                  borderLeft: isMvp ? '3px solid #ffdd44' : undefined,
+                }}>
+                  <td style={{ padding: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {govColor && (
+                      <span style={{
+                        display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+                        background: govColor, flexShrink: 0,
+                      }} />
+                    )}
+                    {s.name}
+                    {isMvp && <span style={{ color: '#ffdd44', fontSize: 10, fontWeight: 700, marginLeft: 4 }}>MVP</span>}
+                  </td>
+                  <td style={{ textAlign: 'right', padding: 4, color: '#cc88ff' }}>{s.kills}</td>
+                  <td style={{ textAlign: 'right', padding: 4, color: '#ff8844' }}>{s.damageDealt}</td>
+                  <td style={{ textAlign: 'right', padding: 4, color: '#44bbff' }}>{s.towersPlaced}</td>
+                  <td style={{ textAlign: 'right', padding: 4, color: '#8888aa' }}>{dpt}</td>
+                </tr>
+              );
+            })}
+            {entries.length > 1 && (
+              <tr style={{ borderTop: '1px solid #333366', fontWeight: 600 }}>
+                <td style={{ padding: 4, color: '#8888aa' }}>Total</td>
+                <td style={{ textAlign: 'right', padding: 4, color: '#cc88ff' }}>{totalKills}</td>
+                <td style={{ textAlign: 'right', padding: 4, color: '#ff8844' }}>{totalDamage}</td>
+                <td style={{ textAlign: 'right', padding: 4, color: '#44bbff' }}>{totalTowers}</td>
+                <td style={{ textAlign: 'right', padding: 4, color: '#8888aa' }}>{Math.round(totalDamage / Math.max(1, totalTowers))}</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
 
@@ -138,24 +172,49 @@ export function GameOverModal({ victory, stats, onClose, onRematch, waveReached,
         {newBadges && newBadges.length > 0 && (
           <div style={{
             marginTop: 10,
-            padding: '8px 12px',
-            background: 'rgba(68, 187, 255, 0.08)',
-            border: '1px solid #333366',
+            padding: '10px 12px',
+            background: 'rgba(255, 221, 68, 0.06)',
+            border: '1px solid rgba(255, 221, 68, 0.3)',
             borderRadius: 6,
             textAlign: 'center',
           }}>
-            <div style={{ fontSize: 11, color: '#8888aa', marginBottom: 4 }}>Badges Earned</div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              {newBadges.map(b => (
-                <span
+            <style>{`
+              @keyframes badgeFlash {
+                0% { box-shadow: 0 0 4px rgba(255, 221, 68, 0.2), inset 0 0 4px rgba(255, 221, 68, 0.1); }
+                50% { box-shadow: 0 0 12px rgba(255, 221, 68, 0.6), inset 0 0 8px rgba(255, 221, 68, 0.3); }
+                100% { box-shadow: 0 0 4px rgba(255, 221, 68, 0.2), inset 0 0 4px rgba(255, 221, 68, 0.1); }
+              }
+              @keyframes badgeAppear {
+                0% { transform: scale(0.5); opacity: 0; }
+                60% { transform: scale(1.2); opacity: 1; }
+                100% { transform: scale(1); opacity: 1; }
+              }
+            `}</style>
+            <div style={{ fontSize: 12, color: '#ffdd44', marginBottom: 6, fontWeight: 700 }}>New Badges Unlocked!</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {newBadges.map((b, i) => (
+                <div
                   key={b.id}
                   title={`${b.name}: ${b.description}`}
                   style={{
-                    fontSize: 22,
-                    filter: `drop-shadow(0 0 4px ${b.color})`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 3,
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    background: `${b.color}15`,
+                    border: `2px solid ${b.color}66`,
+                    animation: `badgeFlash 1.5s ease-in-out infinite, badgeAppear 0.4s ease-out ${i * 0.15}s both`,
                     cursor: 'default',
                   }}
-                >{b.icon}</span>
+                >
+                  <span style={{
+                    fontSize: 24,
+                    filter: `drop-shadow(0 0 6px ${b.color})`,
+                  }}>{b.icon}</span>
+                  <span style={{ fontSize: 10, color: b.color, fontWeight: 600 }}>{b.name}</span>
+                </div>
               ))}
             </div>
           </div>

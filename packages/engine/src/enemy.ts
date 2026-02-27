@@ -1,12 +1,17 @@
-import { EnemyType, EnemyStats, EnemySnapshot, WaveProperties, DamageType } from './types';
+import { EnemyType, EnemyStats, EnemySnapshot, WaveProperties, DamageType, EnemyTrait } from './types';
+import type { EliteAffix, WaveMutatorType } from './types';
 import {
   DIFFICULTY_MULTIPLIER_PER_WAVE, PLAYER_MULTIPLIER_SCALING,
   DEFAULT_SPAWN_INTERVAL, DAMAGE_TYPE_PHYSICAL, DAMAGE_TYPE_MAGIC,
   POISON_ANTI_HEAL, ARMOR_DEBUFF_DURATION,
   MUTATOR_START_WAVE, MAX_MUTATORS_PER_WAVE, ALL_MUTATOR_TYPES,
   ENDLESS_BOSS_INTERVAL,
+  ELITE_WAVE_INTERVAL, ELITE_WAVE_OFFSET, ALL_ELITE_AFFIXES,
+  DEFLECTOR_CHANCE, SHIELD_HP_PCT, SHIELD_REGEN_RATE, SHIELD_REGEN_DELAY,
+  PHASE_CYCLE, PHASE_DURATION,
+  DODGE_CHANCE, DODGE_COOLDOWN, BURROW_SKIP_CELLS, BURROW_COOLDOWN, MIRROR_REFLECT_PCT,
+  RALLY_SPEED_BUFF,
 } from './constants';
-import type { WaveMutatorType } from './types';
 
 export const ENEMY_DEFINITIONS: Record<EnemyType, EnemyStats> = {
   [EnemyType.Basic]: { enemyType: EnemyType.Basic, maxHealth: 40, speed: 2.0, reward: 5, damage: 1, armor: 0, magicResist: 0, isFlying: false, healPerSecond: 0, splitInto: null, splitCount: 0 },
@@ -47,6 +52,20 @@ export class EnemyInstance {
   hitsTaken = 0;
   isSentCreep = false;
   sentByPlayerId: string | null = null;
+
+  // Trait fields
+  traits: EnemyTrait[] = [];
+  dodgeCooldownEnd = 0;
+  burrowCooldownEnd = 0;
+  rallyBuffed = false;
+
+  // Elite fields
+  eliteAffix: EliteAffix | null = null;
+  shieldHealth = 0;
+  shieldMaxHealth = 0;
+  lastDamageTime = 0;
+  phaseTimer = 0;
+  phaseActive = false;
 
   constructor(
     enemyId: string,
@@ -91,8 +110,16 @@ export class EnemyInstance {
       stunEndTime: this.stunEndTime,
       armorDebuff: this.armorDebuff,
       armorDebuffEndTime: this.armorDebuffEndTime,
+      traits: this.traits.length > 0 ? [...this.traits] : undefined,
+      dodgeCooldownEnd: this.dodgeCooldownEnd > 0 ? this.dodgeCooldownEnd : undefined,
+      burrowCooldownEnd: this.burrowCooldownEnd > 0 ? this.burrowCooldownEnd : undefined,
+      rallyBuffed: this.rallyBuffed || undefined,
       isSentCreep: this.isSentCreep || undefined,
       sentByPlayerId: this.sentByPlayerId,
+      eliteAffix: this.eliteAffix ?? undefined,
+      shieldHealth: this.shieldHealth > 0 ? this.shieldHealth : undefined,
+      shieldMaxHealth: this.shieldMaxHealth > 0 ? this.shieldMaxHealth : undefined,
+      phaseActive: this.phaseActive || undefined,
       stats: {
         speed: this.stats.speed,
         reward: this.stats.reward,
@@ -104,13 +131,36 @@ export class EnemyInstance {
   }
 
   takeDamage(damage: number, damageType: DamageType = DAMAGE_TYPE_PHYSICAL): boolean {
+    // Phase shifter invulnerability
+    if (this.isInvulnerable()) return false;
+    // Deflector: chance to negate
+    if (this.shouldDeflect()) return false;
+
     const effectiveArmor = Math.max(0, this.stats.armor - this.armorDebuff);
     if (damageType === DAMAGE_TYPE_PHYSICAL) {
       damage = Math.floor(damage * (1.0 - effectiveArmor));
     } else if (damageType === DAMAGE_TYPE_MAGIC) {
       damage = Math.floor(damage * (1.0 - this.stats.magicResist));
     }
-    this.currentHealth -= Math.max(1, damage);
+    damage = Math.max(1, damage);
+
+    // Track last damage time for shield regen delay
+    if (this.eliteAffix === 'shielded') {
+      this.lastDamageTime = Date.now() / 1000;
+    }
+
+    // Shield absorbs damage before HP
+    if (this.shieldHealth > 0) {
+      if (damage <= this.shieldHealth) {
+        this.shieldHealth -= damage;
+        this.hitsTaken++;
+        return false;
+      }
+      damage -= this.shieldHealth;
+      this.shieldHealth = 0;
+    }
+
+    this.currentHealth -= damage;
     this.hitsTaken++;
     if (this.currentHealth <= 0) {
       this.currentHealth = 0;
@@ -126,6 +176,7 @@ export class EnemyInstance {
   }
 
   applySlow(slowAmount: number, duration: number, currentTime: number): void {
+    if (this.eliteAffix === 'juggernaut') return;
     const newSlow = 1.0 - slowAmount;
     if (newSlow < this.slowMultiplier || currentTime > this.slowEndTime) {
       this.slowMultiplier = newSlow;
@@ -140,6 +191,7 @@ export class EnemyInstance {
   }
 
   applyStun(duration: number, currentTime: number): void {
+    if (this.eliteAffix === 'juggernaut') return;
     const newEnd = currentTime + duration;
     if (newEnd > this.stunEndTime) {
       this.stunEndTime = newEnd;
@@ -192,10 +244,63 @@ export class EnemyInstance {
     }
   }
 
+  // --- Trait methods ---
+
+  shouldDodge(time: number): boolean {
+    if (!this.traits.includes('dodge')) return false;
+    if (time < this.dodgeCooldownEnd) return false;
+    if (Math.random() >= DODGE_CHANCE) return false;
+    this.dodgeCooldownEnd = time + DODGE_COOLDOWN;
+    return true;
+  }
+
+  attemptBurrow(time: number): boolean {
+    if (!this.traits.includes('burrow')) return false;
+    if (time < this.burrowCooldownEnd) return false;
+    this.burrowCooldownEnd = time + BURROW_COOLDOWN;
+    this.pathIndex = Math.min(this.pathIndex + BURROW_SKIP_CELLS, 9999);
+    return true;
+  }
+
+  getMirrorReflect(damage: number): number {
+    if (!this.traits.includes('mirror')) return 0;
+    return Math.floor(damage * MIRROR_REFLECT_PCT);
+  }
+
+  // --- Elite methods ---
+
+  shouldDeflect(): boolean {
+    if (this.eliteAffix !== 'deflector') return false;
+    return Math.random() < DEFLECTOR_CHANCE;
+  }
+
+  updateShield(deltaTime: number, currentTime: number): void {
+    if (this.eliteAffix !== 'shielded' || this.shieldMaxHealth <= 0) return;
+    if (this.shieldHealth >= this.shieldMaxHealth) return;
+    if (currentTime - this.lastDamageTime < SHIELD_REGEN_DELAY) return;
+    const regen = this.shieldMaxHealth * SHIELD_REGEN_RATE * deltaTime;
+    this.shieldHealth = Math.min(this.shieldMaxHealth, this.shieldHealth + regen);
+  }
+
+  updatePhase(deltaTime: number): void {
+    if (this.eliteAffix !== 'phase_shifter') return;
+    this.phaseTimer += deltaTime;
+    if (this.phaseTimer >= PHASE_CYCLE) this.phaseTimer -= PHASE_CYCLE;
+    this.phaseActive = this.phaseTimer < PHASE_DURATION;
+  }
+
+  isInvulnerable(): boolean {
+    if (this.eliteAffix === 'phase_shifter' && this.phaseActive) return true;
+    return false;
+  }
+
   getEffectiveSpeed(): number {
     let base = this.stats.speed * this.slowMultiplier;
     if (this.enemyType === EnemyType.Berserker && this.hitsTaken > 0) {
       base *= Math.min(2.0, 1.0 + this.hitsTaken * 0.05);
+    }
+    if (this.rallyBuffed) {
+      base *= (1 + RALLY_SPEED_BUFF);
     }
     return base;
   }
@@ -539,7 +644,36 @@ export function generateWave(waveNumber: number, playerCount: number, options?: 
     }
   }
 
+  // Tag elite waves and pick a random affix
+  if (isEliteWave(waveNumber)) {
+    const affix = ALL_ELITE_AFFIXES[Math.floor(Math.random() * ALL_ELITE_AFFIXES.length)];
+    props.tags.push('elite');
+    props.eliteAffix = affix;
+  }
+
+  // Assign enemy traits based on wave
+  if (waveNumber >= 12) {
+    props.tags.push('traits');
+  }
+
   return new Wave(waveNumber, enemies, props);
+}
+
+/** Get traits for an enemy based on wave number and type */
+export function getEnemyTraits(enemyType: EnemyType, waveNumber: number): EnemyTrait[] {
+  const traits: EnemyTrait[] = [];
+  if (enemyType === EnemyType.Fast && waveNumber >= 12) traits.push('dodge');
+  if (enemyType === EnemyType.Healer && waveNumber >= 14) traits.push('rally');
+  if (enemyType === EnemyType.Tank && waveNumber >= 25) traits.push('burrow');
+  if (enemyType === EnemyType.MagicResist && waveNumber >= 24) traits.push('mirror');
+  return traits;
+}
+
+export function isEliteWave(waveNumber: number): boolean {
+  if (waveNumber < 1) return false;
+  // Boss waves (multiples of 10) are not elite waves
+  if (waveNumber % ELITE_WAVE_INTERVAL === 0) return false;
+  return waveNumber % ELITE_WAVE_INTERVAL === ELITE_WAVE_OFFSET;
 }
 
 export function createEnemy(

@@ -123,6 +123,11 @@ export class TowerInstance {
   targetingMode: TargetingMode = 'first';
   placedAt = 0;
   activeSynergies: string[] = [];
+  giftCooldown = 0;
+  autoUpgrade = false;
+  fundingGoal = 0;
+  fundingCurrent = 0;
+  fundingContributors = new Map<string, number>();
 
   constructor(towerId: string, towerType: TowerType, ownerId: string, x: number, y: number, costMult = 1.0) {
     this.towerId = towerId;
@@ -147,6 +152,11 @@ export class TowerInstance {
       currentTarget: this.currentTarget,
       targetingMode: this.targetingMode,
       activeSynergies: this.activeSynergies,
+      giftCooldown: this.giftCooldown,
+      autoUpgrade: this.autoUpgrade || undefined,
+      fundingGoal: this.fundingGoal > 0 ? this.fundingGoal : undefined,
+      fundingCurrent: this.fundingCurrent > 0 ? this.fundingCurrent : undefined,
+      fundingContributors: this.fundingContributors.size > 0 ? Object.fromEntries(this.fundingContributors) : undefined,
       stats: {
         cost: this.stats.cost,
         damage: this.stats.damage,
@@ -253,6 +263,19 @@ export interface Projectile {
   teleportDistance: number;
   targetLastX: number;
   targetLastY: number;
+}
+
+export function estimateTowerDPS(towerType: TowerType, damageMult = 1.0): number {
+  const stats = TOWER_DEFINITIONS[towerType];
+  if (!stats) return 0;
+  return Math.round(stats.damage * damageMult * stats.fireRate * 10) / 10;
+}
+
+export function towerEfficiency(towerType: TowerType): number {
+  const stats = TOWER_DEFINITIONS[towerType];
+  if (!stats || stats.cost === 0) return 0;
+  const dps = estimateTowerDPS(towerType);
+  return Math.round(dps / stats.cost * 100) / 100;
 }
 
 export function createProjectile(

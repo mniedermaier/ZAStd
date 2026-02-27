@@ -76,6 +76,48 @@ export const INTEREST_CAP_PER_WAVE = 10;
 // Endless Mode
 export const ENDLESS_BOSS_INTERVAL = 10;
 
+// Elite Enemies
+export const ELITE_WAVE_INTERVAL = 10;
+export const ELITE_WAVE_OFFSET = 5;
+export const ELITE_HP_MULT = 5;
+export const ELITE_SPEED_MULT = 0.7;
+export const ELITE_REWARD_MULT = 3;
+
+// Elite Affix Parameters
+export const DEFLECTOR_CHANCE = 0.4;
+export const SHIELD_HP_PCT = 0.5;
+export const SHIELD_REGEN_RATE = 0.05; // 5% maxHP per second
+export const SHIELD_REGEN_DELAY = 3.0; // seconds after last damage
+export const PHASE_CYCLE = 4.0; // seconds per cycle
+export const PHASE_DURATION = 1.5; // invulnerable duration per cycle
+
+export const ALL_ELITE_AFFIXES = ['deflector', 'shielded', 'juggernaut', 'phase_shifter'] as const;
+
+export const ELITE_AFFIX_DEFINITIONS: Record<string, { name: string; description: string; color: string }> = {
+  deflector:     { name: 'Deflector',     description: '40% chance to negate projectile damage',     color: '#44bbff' },
+  shielded:      { name: 'Shielded',      description: 'Regenerating shield absorbs damage',         color: '#6688ff' },
+  juggernaut:    { name: 'Juggernaut',    description: 'Immune to slow, stun, and knockback',        color: '#ff8844' },
+  phase_shifter: { name: 'Phase Shifter', description: 'Periodically becomes invulnerable',          color: '#cc44ff' },
+};
+
+// Enemy Trait Constants
+export const DODGE_CHANCE = 0.20;
+export const DODGE_COOLDOWN = 2.0;
+export const RALLY_RANGE = 3.0;
+export const RALLY_SPEED_BUFF = 0.25;
+export const BURROW_SKIP_CELLS = 8;
+export const BURROW_COOLDOWN = 10.0;
+export const MIRROR_REFLECT_PCT = 0.15;
+
+// Zone Ability Definitions
+export const ZONE_DEFINITIONS: Record<string, {
+  radius: number; duration: number; damagePerTick: number;
+  slowAmount: number; slowDuration: number; cooldown: number;
+}> = {
+  fire_lava: { radius: 3.5, duration: 8, damagePerTick: 25, slowAmount: 0, slowDuration: 0, cooldown: 90 },
+  ice_frost: { radius: 4, duration: 10, damagePerTick: 0, slowAmount: 0.6, slowDuration: 2, cooldown: 75 },
+};
+
 // Challenge Modifiers
 export const CHALLENGE_MODIFIERS: Record<string, { name: string; description: string; scoreMultiplier: number }> = {
   no_sell:      { name: 'No Sell',       description: "Can't sell towers",                scoreMultiplier: 1.5 },
@@ -329,3 +371,15 @@ export const SYNERGY_DEFINITIONS: SynergyDefinition[] = [
     splashRadiusMult: 1.0, damageMult: 1.0, executeThresholdBonus: 0, armorDebuffBonus: 0, stunDurationMult: 1.15, magicDamageMult: 1.0,
   },
 ];
+
+/** Static lookup: synergy id → SynergyDefinition (avoids .find() per projectile) */
+export const SYNERGY_BY_ID = new Map<string, SynergyDefinition>();
+for (const syn of SYNERGY_DEFINITIONS) {
+  SYNERGY_BY_ID.set(syn.id, syn);
+}
+
+/** Static lookup: creep type → CreepSendDefinition (avoids .find() per kill) */
+export const CREEP_SEND_BY_TYPE = new Map<string, CreepSendDefinition>();
+for (const def of CREEP_SEND_DEFINITIONS) {
+  CREEP_SEND_BY_TYPE.set(def.type, def);
+}

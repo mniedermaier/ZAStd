@@ -39,6 +39,10 @@ interface UIStore {
   // Minimap pan target
   panTarget: { x: number; y: number } | null;
 
+  // Spectator
+  spectatorTarget: string | null;
+  spectatorFreeCamera: boolean;
+
   // Actions
   startPlacement: (towerType: TowerType) => void;
   cancelPlacement: () => void;
@@ -51,6 +55,9 @@ interface UIStore {
   clearExpiredProposals: () => void;
   setPanTarget: (x: number, y: number) => void;
   clearPanTarget: () => void;
+  cycleSpectatorTarget: (playerIds: string[]) => void;
+  setSpectatorTarget: (target: string | null) => void;
+  setSpectatorFreeCamera: (free: boolean) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -61,6 +68,8 @@ export const useUIStore = create<UIStore>((set) => ({
   pings: [],
   proposals: [],
   panTarget: null,
+  spectatorTarget: null,
+  spectatorFreeCamera: false,
 
   startPlacement: (towerType) => set({
     selectedTowerType: towerType,
@@ -101,4 +110,12 @@ export const useUIStore = create<UIStore>((set) => ({
   })),
   setPanTarget: (x, y) => set({ panTarget: { x, y } }),
   clearPanTarget: () => set({ panTarget: null }),
+  cycleSpectatorTarget: (playerIds) => set((s) => {
+    if (playerIds.length === 0) return { spectatorTarget: null, spectatorFreeCamera: false };
+    const currentIdx = s.spectatorTarget ? playerIds.indexOf(s.spectatorTarget) : -1;
+    const nextIdx = (currentIdx + 1) % playerIds.length;
+    return { spectatorTarget: playerIds[nextIdx], spectatorFreeCamera: false };
+  }),
+  setSpectatorTarget: (target) => set({ spectatorTarget: target, spectatorFreeCamera: target === null }),
+  setSpectatorFreeCamera: (free) => set({ spectatorFreeCamera: free, spectatorTarget: free ? null : null }),
 }));

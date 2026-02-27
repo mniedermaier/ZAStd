@@ -100,10 +100,18 @@ export function playWaveStart() {
 }
 
 export function playWaveComplete() {
+  // Root + fifth + octave harmony
   playTone(440, 0.15, 'sine', 0.2);
+  playTone(660, 0.15, 'sine', 0.1); // fifth
   setTimeout(() => playTone(550, 0.15, 'sine', 0.2), 100);
+  setTimeout(() => playTone(825, 0.15, 'sine', 0.1), 100); // fifth
   setTimeout(() => playTone(660, 0.15, 'sine', 0.25), 200);
-  setTimeout(() => playTone(880, 0.3, 'sine', 0.3), 300);
+  setTimeout(() => playTone(990, 0.15, 'sine', 0.12), 200); // fifth
+  setTimeout(() => {
+    playTone(880, 0.3, 'sine', 0.3);
+    playTone(1320, 0.3, 'sine', 0.15); // fifth
+    playTone(1760, 0.3, 'sine', 0.08); // octave
+  }, 300);
 }
 
 export function playVictory() {
@@ -242,6 +250,203 @@ export function playSynergyActivation() {
   playTone(660, 0.12, 'sine', 0.1);
   setTimeout(() => playTone(880, 0.12, 'sine', 0.1), 80);
   setTimeout(() => playTone(1100, 0.15, 'sine', 0.12), 160);
+}
+
+// --- Low-Lives Alarm (Feature 10) ---
+
+let lowLivesInterval: ReturnType<typeof setInterval> | null = null;
+
+export function startLowLivesAlarm(lives: number): void {
+  if (lowLivesInterval !== null) return;
+  const g = sfxGain();
+  if (g < 0.01) return;
+
+  const intervalMs = lives <= 1 ? 1000 : lives <= 3 ? 1500 : 2000;
+
+  const beat = () => {
+    const c = getCtx();
+    const gainVal = 0.12 * sfxGain();
+    if (gainVal < 0.001) return;
+    // Double-beat pattern
+    for (const offset of [0, 0.15]) {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 80;
+      gain.gain.setValueAtTime(gainVal, c.currentTime + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + offset + 0.2);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(c.currentTime + offset);
+      osc.stop(c.currentTime + offset + 0.2);
+    }
+  };
+
+  beat();
+  lowLivesInterval = setInterval(beat, intervalMs);
+}
+
+export function stopLowLivesAlarm(): void {
+  if (lowLivesInterval !== null) {
+    clearInterval(lowLivesInterval);
+    lowLivesInterval = null;
+  }
+}
+
+// --- Dynamic Music Layers (Feature 11) ---
+
+let rhythmInterval: ReturnType<typeof setInterval> | null = null;
+let intensityOsc: OscillatorNode | null = null;
+let intensityGain: GainNode | null = null;
+let bossOsc: OscillatorNode | null = null;
+let bossGain: GainNode | null = null;
+let bossPercInterval: ReturnType<typeof setInterval> | null = null;
+
+export function updateMusicIntensity(waveActive: boolean, enemyCount: number, isBossWave: boolean): void {
+  const g = musicGain();
+
+  // Rhythm layer: noise burst every 1.5s during active wave
+  if (waveActive && !rhythmInterval) {
+    rhythmInterval = setInterval(() => {
+      const mg = musicGain();
+      if (mg < 0.01) return;
+      playNoiseMusicLayer(0.15, 0.03 * mg);
+    }, 1500);
+  } else if (!waveActive && rhythmInterval) {
+    clearInterval(rhythmInterval);
+    rhythmInterval = null;
+  }
+
+  // Intensity layer: sine at fifth above ambient, gain scales with enemy count
+  if (enemyCount > 15 && g >= 0.01) {
+    if (!intensityOsc) {
+      const c = getCtx();
+      intensityOsc = c.createOscillator();
+      intensityGain = c.createGain();
+      intensityOsc.type = 'sine';
+      intensityOsc.frequency.value = AMBIENT_NOTES[Math.floor(Math.random() * AMBIENT_NOTES.length)] * 1.5;
+      intensityGain!.gain.setValueAtTime(0, c.currentTime);
+      intensityOsc.connect(intensityGain!);
+      intensityGain!.connect(c.destination);
+      intensityOsc.start();
+    }
+    const targetGain = Math.min(0.04, ((enemyCount - 15) / 35) * 0.04) * g;
+    intensityGain!.gain.linearRampToValueAtTime(targetGain, getCtx().currentTime + 0.5);
+  } else if (intensityOsc) {
+    try {
+      intensityGain!.gain.linearRampToValueAtTime(0, getCtx().currentTime + 1);
+      const osc = intensityOsc;
+      setTimeout(() => { try { osc.stop(); } catch {} }, 1100);
+    } catch {}
+    intensityOsc = null;
+    intensityGain = null;
+  }
+
+  // Boss layer: sub-bass drone + percussion
+  if (isBossWave && g >= 0.01) {
+    if (!bossOsc) {
+      const c = getCtx();
+      bossOsc = c.createOscillator();
+      bossGain = c.createGain();
+      bossOsc.type = 'sine';
+      bossOsc.frequency.value = 65;
+      bossGain!.gain.setValueAtTime(0, c.currentTime);
+      bossGain!.gain.linearRampToValueAtTime(0.05 * g, c.currentTime + 1);
+      bossOsc.connect(bossGain!);
+      bossGain!.connect(c.destination);
+      bossOsc.start();
+      bossPercInterval = setInterval(() => {
+        playNoiseMusicLayer(0.08, 0.04 * musicGain());
+      }, 750);
+    }
+  } else if (bossOsc) {
+    try {
+      bossGain!.gain.linearRampToValueAtTime(0, getCtx().currentTime + 1);
+      const osc = bossOsc;
+      setTimeout(() => { try { osc.stop(); } catch {} }, 1100);
+    } catch {}
+    bossOsc = null;
+    bossGain = null;
+    if (bossPercInterval) { clearInterval(bossPercInterval); bossPercInterval = null; }
+  }
+}
+
+function playNoiseMusicLayer(duration: number, gainVal: number) {
+  const c = getCtx();
+  const bufferSize = Math.floor(c.sampleRate * duration);
+  if (bufferSize <= 0) return;
+  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1);
+  const source = c.createBufferSource();
+  source.buffer = buffer;
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(gainVal, c.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + duration);
+  source.connect(gain);
+  gain.connect(c.destination);
+  source.start();
+}
+
+// --- Tower Ambient Hum (Feature 12) ---
+
+const GOVERNOR_HUM_CONFIG: Record<string, { freq: number; type: OscillatorType; detune?: number }> = {
+  fire:    { freq: 131, type: 'sawtooth' },
+  ice:     { freq: 262, type: 'sine' },
+  thunder: { freq: 330, type: 'square' },
+  poison:  { freq: 165, type: 'triangle' },
+  death:   { freq: 110, type: 'sine' },
+  nature:  { freq: 196, type: 'sine' },
+  arcane:  { freq: 220, type: 'sine', detune: 30 },
+  holy:    { freq: 330, type: 'sine' },
+};
+
+const activeHums = new Map<string, { osc: OscillatorNode; gain: GainNode }>();
+
+export function updateTowerAmbience(activeGovernors: Set<string>): void {
+  const g = musicGain();
+
+  // Start hums for new governors
+  for (const gov of activeGovernors) {
+    if (activeHums.has(gov)) continue;
+    if (g < 0.01) continue;
+    const cfg = GOVERNOR_HUM_CONFIG[gov];
+    if (!cfg) continue;
+
+    const c = getCtx();
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = cfg.type;
+    osc.frequency.value = cfg.freq;
+    if (cfg.detune) osc.detune.value = cfg.detune;
+    gain.gain.setValueAtTime(0, c.currentTime);
+    gain.gain.linearRampToValueAtTime(0.012 * g, c.currentTime + 2);
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.start();
+    activeHums.set(gov, { osc, gain });
+  }
+
+  // Stop hums for removed governors
+  for (const [gov, hum] of activeHums) {
+    if (activeGovernors.has(gov)) {
+      // Update gain level
+      hum.gain.gain.linearRampToValueAtTime(0.012 * g, getCtx().currentTime + 0.5);
+      continue;
+    }
+    try {
+      hum.gain.gain.linearRampToValueAtTime(0, getCtx().currentTime + 2);
+      setTimeout(() => { try { hum.osc.stop(); } catch {} }, 2100);
+    } catch {}
+    activeHums.delete(gov);
+  }
+}
+
+export function stopAllHums(): void {
+  for (const [, hum] of activeHums) {
+    try { hum.osc.stop(); } catch {}
+  }
+  activeHums.clear();
 }
 
 // Initialize audio context on first user interaction

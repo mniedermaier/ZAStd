@@ -17,13 +17,16 @@ export type ClientAction =
   | { type: 'spectate_request'; playerId: string; playerName: string }
   | { type: 'send_creeps'; playerId: string; enemyType: string; count: number }
   | { type: 'send_gold'; playerId: string; targetPlayerId: string; amount: number }
+  | { type: 'gift_tower'; playerId: string; towerId: string; targetPlayerId: string }
   | { type: 'queue_upgrade'; playerId: string; towerId: string }
   | { type: 'cancel_queue'; playerId: string; towerId: string }
   | { type: 'start_vote'; playerId: string; voteType: string; targetId?: string }
   | { type: 'cast_vote'; playerId: string; voteId: string }
   | { type: 'set_targeting'; playerId: string; towerId: string; mode: string }
   | { type: 'propose_placement'; playerId: string; x: number; y: number; towerType: string }
-  | { type: 'join_game_request'; playerId: string; governor: string };
+  | { type: 'join_game_request'; playerId: string; governor: string }
+  | { type: 'request_funding'; playerId: string; towerId: string }
+  | { type: 'contribute_funding'; playerId: string; towerId: string; amount: number };
 
 // Messages from host -> all clients
 export type HostBroadcast =

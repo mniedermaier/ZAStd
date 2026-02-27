@@ -1,4 +1,4 @@
-import { GamePhase, EnemyType } from './types';
+import { GamePhase, EnemyType, EnemyTrait } from './types';
 import { GameState } from './game-state';
 import { Projectile, createProjectile, TowerInstance } from './tower';
 import { EnemyInstance, createEnemy } from './enemy';
@@ -9,9 +9,13 @@ import {
   WAVE_BASE_INCOME, WAVE_INCOME_PER_WAVE,
   MAX_AURA_DAMAGE_MULT, MAX_AURA_SPEED_MULT,
   CHAIN_INITIAL_MULT, CHAIN_DECAY_MULT, SPLASH_DAMAGE_MULT, CHAIN_RANGE,
-  ABILITY_DEFINITIONS, SYNERGY_DEFINITIONS, CREEP_SEND_DEFINITIONS,
+  ABILITY_DEFINITIONS, SYNERGY_BY_ID, CREEP_SEND_BY_TYPE,
+  RALLY_RANGE, MAX_TOWER_LEVEL,
 } from './constants';
 import type { ReplayRecorder } from './replay';
+
+/** Cached EnemyType values — avoids Object.values() allocation per split check */
+const _enemyTypeValues = new Set<string>(Object.values(EnemyType));
 
 export interface GameEvent {
   type: string;
@@ -34,6 +38,14 @@ export class GameLoop {
   private _gameEndTime: number | null = null;
   private _intervalId: ReturnType<typeof setInterval> | null = null;
   private _lastTickTime = 0;
+
+  // Spatial hash for efficient enemy lookups (avoids O(n*m) scans)
+  private _spatialHash = new Map<number, EnemyInstance[]>();
+  private _spatialCellSize = 4;
+
+  // Reusable arrays to avoid per-tick allocations
+  private _enemiesToRemove: string[] = [];
+  private _enemiesToSpawn: EnemyInstance[] = [];
 
   constructor(gameState: GameState) {
     this.gameState = gameState;
@@ -117,11 +129,35 @@ export class GameLoop {
       this.gameState.spawnEnemyFromWave(currentTime);
     }
 
-    // Aura effects
-    this._applyAuraEffects();
+    // Aura effects (only recalculate when towers change)
+    if (this.gameState.auraDirty) {
+      this._applyAuraEffects();
+      this.gameState.auraDirty = false;
+    }
 
     // Process upgrade queue
     this.gameState.processUpgradeQueue();
+
+    // Auto-upgrade: towers with autoUpgrade flag
+    for (const tower of this.gameState.towers.values()) {
+      if (tower.autoUpgrade && tower.level < MAX_TOWER_LEVEL) {
+        const player = this.gameState.players.get(tower.ownerId);
+        if (player && tower.canUpgrade()) {
+          const cost = tower.getUpgradeCost();
+          if (player.spendMoney(cost)) {
+            tower.upgrade();
+            this.gameState.auraDirty = true;
+          }
+        }
+      }
+    }
+
+    // Decrement tower gift cooldowns
+    for (const tower of this.gameState.towers.values()) {
+      if (tower.giftCooldown > 0) {
+        tower.giftCooldown = Math.max(0, tower.giftCooldown - deltaTime);
+      }
+    }
 
     // Resolve votes
     const voteResults = this.gameState.resolveVotes(currentTime);
@@ -151,6 +187,15 @@ export class GameLoop {
 
     // Update enemies
     this._updateEnemies(deltaTime, currentTime);
+
+    // Process rally: mark enemies near rally enemies as buffed
+    this._processRally();
+
+    // Rebuild spatial hash after enemies move (used by tower targeting & projectile AoE)
+    this._buildSpatialHash();
+
+    // Update zone abilities
+    this._updateZones(deltaTime, currentTime);
 
     // Tower combat
     this._updateTowers(currentTime);
@@ -222,6 +267,42 @@ export class GameLoop {
     }
   }
 
+  /** Build spatial hash grid from alive enemies. Call once per tick after enemies move. */
+  private _buildSpatialHash(): void {
+    // Reset existing cells (reuse arrays to avoid GC)
+    for (const cell of this._spatialHash.values()) {
+      cell.length = 0;
+    }
+    const cs = this._spatialCellSize;
+    for (const enemy of this.gameState.enemies.values()) {
+      if (!enemy.isAlive) continue;
+      const key = Math.floor(enemy.x / cs) * 1000 + Math.floor(enemy.y / cs);
+      let cell = this._spatialHash.get(key);
+      if (!cell) {
+        cell = [];
+        this._spatialHash.set(key, cell);
+      }
+      cell.push(enemy);
+    }
+  }
+
+  /** Iterate spatial hash cells overlapping a circle at (x, y) with given range. */
+  private _forEachNearbyEnemy(x: number, y: number, range: number, fn: (enemy: EnemyInstance) => void): void {
+    const cs = this._spatialCellSize;
+    const minCX = Math.floor((x - range) / cs);
+    const maxCX = Math.floor((x + range) / cs);
+    const minCY = Math.floor((y - range) / cs);
+    const maxCY = Math.floor((y + range) / cs);
+    for (let cx = minCX; cx <= maxCX; cx++) {
+      for (let cy = minCY; cy <= maxCY; cy++) {
+        const cell = this._spatialHash.get(cx * 1000 + cy);
+        if (cell) {
+          for (let i = 0; i < cell.length; i++) fn(cell[i]);
+        }
+      }
+    }
+  }
+
   private _processAbilities(currentTime: number): void {
     const pending = this.gameState._pendingAbilities;
     this.gameState._pendingAbilities = [];
@@ -248,7 +329,7 @@ export class GameLoop {
           if (!enemy.isAlive) continue;
           const dist = calculateDistance(enemy.x, enemy.y, targetX, targetY);
           if (dist <= ability.radius) {
-            if (ability.damage > 0) {
+            if (ability.damage > 0 && !enemy.isInvulnerable()) {
               const dmgType = ability.magicDamage ? 'magic' as const : 'physical' as const;
               const killed = enemy.takeDamage(ability.damage, dmgType);
               if (killed) {
@@ -266,7 +347,7 @@ export class GameLoop {
         // Global abilities
         if (ability.governor === 'thunder') {
           // Chain Storm: 200 magic damage to 10 random enemies
-          const alive = [...this.gameState.enemies.values()].filter(e => e.isAlive);
+          const alive = [...this.gameState.enemies.values()].filter(e => e.isAlive && !e.isInvulnerable());
           const shuffled = alive.sort(() => Math.random() - 0.5).slice(0, 10);
           for (const enemy of shuffled) {
             const killed = enemy.takeDamage(ability.damage, 'magic');
@@ -279,7 +360,7 @@ export class GameLoop {
         } else if (ability.governor === 'death') {
           // Reap: instant kill all enemies <= 15% HP
           for (const enemy of this.gameState.enemies.values()) {
-            if (!enemy.isAlive) continue;
+            if (!enemy.isAlive || enemy.isInvulnerable()) continue;
             if (enemy.currentHealth / enemy.stats.maxHealth <= ability.executeThreshold) {
               const dmg = enemy.currentHealth;
               enemy.currentHealth = 0;
@@ -317,8 +398,10 @@ export class GameLoop {
   }
 
   private _updateEnemies(deltaTime: number, currentTime: number): void {
-    const enemiesToRemove: string[] = [];
-    const enemiesToSpawn: EnemyInstance[] = [];
+    const enemiesToRemove = this._enemiesToRemove;
+    enemiesToRemove.length = 0;
+    const enemiesToSpawn = this._enemiesToSpawn;
+    enemiesToSpawn.length = 0;
 
     for (const [enemyId, enemy] of this.gameState.enemies) {
       if (!enemy.isAlive) {
@@ -355,6 +438,10 @@ export class GameLoop {
 
       // Heal
       enemy.updateHeal(deltaTime);
+
+      // Elite: shield regen and phase cycling
+      enemy.updateShield(deltaTime, currentTime);
+      enemy.updatePhase(deltaTime);
 
       // Re-path if version changed (ground enemies)
       if (!enemy.isFlying && enemy.pathVersion !== this.gameState.pathVersion) {
@@ -398,6 +485,11 @@ export class GameLoop {
       enemy.y = newY;
       enemy.pathIndex = newIdx;
 
+      // Burrow: skip ahead on the path
+      if (enemy.traits.includes('burrow')) {
+        enemy.attemptBurrow(currentTime);
+      }
+
       if (reachedEnd) {
         if (!enemy.isSentCreep) {
           this.gameState.takeSharedDamage(enemy.stats.damage);
@@ -415,20 +507,72 @@ export class GameLoop {
     if (enemy.isSentCreep && enemy.sentByPlayerId) {
       const sender = this.gameState.players.get(enemy.sentByPlayerId);
       if (sender) {
-        const def = CREEP_SEND_DEFINITIONS.find(d => d.type === enemy.enemyType);
+        const def = CREEP_SEND_BY_TYPE.get(enemy.enemyType);
         if (def) sender.addMoney(def.incomeBonus);
       }
     }
 
     if (enemy.stats.splitInto && enemy.stats.splitCount > 0) {
       const splitType = enemy.stats.splitInto as EnemyType;
-      if (!Object.values(EnemyType).includes(splitType)) return;
+      if (!_enemyTypeValues.has(splitType)) return;
       for (let i = 0; i < enemy.stats.splitCount; i++) {
         const child = createEnemy(splitType, uuid(), enemy.x, enemy.y, enemy.waveNumber, this.gameState.pathVersion);
         child.pathIndex = enemy.pathIndex;
         enemiesToSpawn.push(child);
       }
     }
+  }
+
+  private _processRally(): void {
+    // Reset all rally flags
+    for (const enemy of this.gameState.enemies.values()) {
+      enemy.rallyBuffed = false;
+    }
+    // Mark enemies near rally enemies
+    for (const rallier of this.gameState.enemies.values()) {
+      if (!rallier.isAlive || !rallier.traits.includes('rally')) continue;
+      for (const enemy of this.gameState.enemies.values()) {
+        if (!enemy.isAlive || enemy.enemyId === rallier.enemyId) continue;
+        const dx = enemy.x - rallier.x;
+        const dy = enemy.y - rallier.y;
+        if (dx * dx + dy * dy <= RALLY_RANGE * RALLY_RANGE) {
+          enemy.rallyBuffed = true;
+        }
+      }
+    }
+  }
+
+  private _updateZones(deltaTime: number, currentTime: number): void {
+    let writeIdx = 0;
+    for (let i = 0; i < this.gameState.activeZones.length; i++) {
+      const zone = this.gameState.activeZones[i];
+      zone.remainingDuration -= deltaTime;
+      if (zone.remainingDuration <= 0) continue;
+
+      // Apply effects to nearby enemies
+      this._forEachNearbyEnemy(zone.x, zone.y, zone.radius, (enemy) => {
+        if (!enemy.isAlive) return;
+        const dx = enemy.x - zone.x;
+        const dy = enemy.y - zone.y;
+        if (dx * dx + dy * dy > zone.radius * zone.radius) return;
+        if (zone.damagePerTick > 0) {
+          const killed = enemy.takeDamage(zone.damagePerTick, 'magic');
+          if (killed) {
+            const player = this.gameState.players.get(zone.playerId);
+            if (player) {
+              player.kills++;
+              this._awardKillReward(player, enemy);
+            }
+          }
+        }
+        if (zone.slowAmount > 0) {
+          enemy.applySlow(zone.slowAmount, zone.slowDuration, currentTime);
+        }
+      });
+
+      this.gameState.activeZones[writeIdx++] = zone;
+    }
+    this.gameState.activeZones.length = writeIdx;
   }
 
   private _updateTowers(currentTime: number): void {
@@ -468,7 +612,7 @@ export class GameLoop {
       // Apply synergy bonuses
       if (tower.activeSynergies.length > 0) {
         for (const synId of tower.activeSynergies) {
-          const syn = SYNERGY_DEFINITIONS.find(s => s.id === synId);
+          const syn = SYNERGY_BY_ID.get(synId);
           if (!syn) continue;
           if (syn.splashRadiusMult !== 1.0) proj.splashRadius *= syn.splashRadiusMult;
           if (syn.magicDamageMult !== 1.0 && proj.damageType === 'magic') {
@@ -492,36 +636,48 @@ export class GameLoop {
     let bestScore = -Infinity;
     const mode = tower.targetingMode;
 
-    for (const enemy of this.gameState.enemies.values()) {
-      if (!enemy.isAlive) continue;
-      const dist = tower.getDistanceTo(enemy.x, enemy.y);
-      if (dist > effectiveRange) continue;
+    const cs = this._spatialCellSize;
+    const minCX = Math.floor((tower.x - effectiveRange) / cs);
+    const maxCX = Math.floor((tower.x + effectiveRange) / cs);
+    const minCY = Math.floor((tower.y - effectiveRange) / cs);
+    const maxCY = Math.floor((tower.y + effectiveRange) / cs);
 
-      let score: number;
-      switch (mode) {
-        case 'last':
-          score = -enemy.pathIndex;
-          break;
-        case 'closest':
-          score = -dist;
-          break;
-        case 'strongest':
-          score = enemy.currentHealth;
-          break;
-        case 'weakest':
-          score = -enemy.currentHealth;
-          break;
-        case 'most_hp_pct':
-          score = enemy.currentHealth / enemy.stats.maxHealth;
-          break;
-        case 'first':
-        default:
-          score = enemy.pathIndex;
-          break;
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        bestTarget = enemy;
+    for (let cx = minCX; cx <= maxCX; cx++) {
+      for (let cy = minCY; cy <= maxCY; cy++) {
+        const cell = this._spatialHash.get(cx * 1000 + cy);
+        if (!cell) continue;
+        for (let i = 0; i < cell.length; i++) {
+          const enemy = cell[i];
+          const dist = tower.getDistanceTo(enemy.x, enemy.y);
+          if (dist > effectiveRange) continue;
+
+          let score: number;
+          switch (mode) {
+            case 'last':
+              score = -enemy.pathIndex;
+              break;
+            case 'closest':
+              score = -dist;
+              break;
+            case 'strongest':
+              score = enemy.currentHealth;
+              break;
+            case 'weakest':
+              score = -enemy.currentHealth;
+              break;
+            case 'most_hp_pct':
+              score = enemy.currentHealth / enemy.stats.maxHealth;
+              break;
+            case 'first':
+            default:
+              score = enemy.pathIndex;
+              break;
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestTarget = enemy;
+          }
+        }
       }
     }
     return bestTarget;
@@ -579,8 +735,9 @@ export class GameLoop {
   /** Award kill reward — shared among all players when moneySharing is on */
   private _awardKillReward(killer: { addMoney(n: number): void }, enemy: EnemyInstance): void {
     const reward = this._getReward(enemy.stats.reward);
-    if (this.gameState.moneySharing && this.gameState.players.size > 1) {
-      const share = Math.max(1, Math.floor(reward / this.gameState.players.size));
+    const playerCount = this.gameState.players.size;
+    if (this.gameState.moneySharing && playerCount > 1) {
+      const share = Math.max(1, Math.floor(reward / playerCount));
       for (const player of this.gameState.players.values()) {
         player.addMoney(share);
       }
@@ -597,9 +754,18 @@ export class GameLoop {
     const impactY = projectile.targetLastY;
     const enemiesToSpawn: EnemyInstance[] = [];
 
-    if (target?.isAlive) {
+    if (target?.isAlive && !target.isInvulnerable()) {
+      // Dodge check
+      if (target.shouldDodge(currentTime)) {
+        this.pendingEvents.push({ type: 'enemy_dodged', enemyId: target.enemyId, x: target.x, y: target.y });
+        // Skip all damage, still process splash/chain below
+        target = null as any;
+      }
+    }
+
+    if (target?.isAlive && !target.isInvulnerable()) {
       // Execute check
-      if (projectile.executeThreshold > 0 && target.checkExecute(projectile.executeThreshold)) {
+      if (projectile.executeThreshold > 0 && !target.isInvulnerable() && target.checkExecute(projectile.executeThreshold)) {
         const executeDmg = target.currentHealth;
         target.currentHealth = 0;
         target.isAlive = false;
@@ -609,6 +775,7 @@ export class GameLoop {
           owner.damageDealt += executeDmg;
         }
         this._onEnemyKilled(target, enemiesToSpawn);
+        this._emitKillEvent(target, tower.towerType, tower.ownerId, true);
       } else {
         // Shatter synergy: bonus damage to slowed targets
         let finalDamage = projectile.damage;
@@ -624,8 +791,8 @@ export class GameLoop {
         if (projectile.stunDuration > 0) target.applyStun(projectile.stunDuration, currentTime);
         if (projectile.armorReduction > 0) target.applyArmorDebuff(projectile.armorReduction, currentTime);
 
-        // Teleport: push enemy back
-        if (projectile.teleportDistance > 0 && !target.isFlying) {
+        // Teleport: push enemy back (juggernaut immune)
+        if (projectile.teleportDistance > 0 && !target.isFlying && target.eliteAffix !== 'juggernaut') {
           const path = this.gameState.sharedPath;
           const stepsBack = Math.floor(projectile.teleportDistance);
           target.pathIndex = Math.max(0, target.pathIndex - stepsBack);
@@ -636,6 +803,12 @@ export class GameLoop {
           }
         }
 
+        // Mirror trait: reflect damage back
+        const mirrorDmg = target.getMirrorReflect(finalDamage);
+        if (mirrorDmg > 0) {
+          this.pendingEvents.push({ type: 'mirror_damage', amount: mirrorDmg, enemyId: target.enemyId, towerId: tower.towerId });
+        }
+
         if (owner) owner.damageDealt += actualDamage;
         if (killed) {
           if (owner) {
@@ -643,6 +816,7 @@ export class GameLoop {
             this._awardKillReward(owner, target);
           }
           this._onEnemyKilled(target, enemiesToSpawn);
+          this._emitKillEvent(target, tower.towerType, tower.ownerId, false);
         }
       }
     }
@@ -650,12 +824,12 @@ export class GameLoop {
     // Chain lightning
     if (projectile.chainCount > 0) {
       const chainTargets: [number, EnemyInstance][] = [];
-      for (const enemy of this.gameState.enemies.values()) {
-        if (target && enemy.enemyId === target.enemyId) continue;
-        if (!enemy.isAlive) continue;
+      this._forEachNearbyEnemy(impactX, impactY, CHAIN_RANGE, (enemy) => {
+        if (target && enemy.enemyId === target.enemyId) return;
+        if (!enemy.isAlive) return;
         const dist = calculateDistance(enemy.x, enemy.y, impactX, impactY);
         if (dist <= CHAIN_RANGE) chainTargets.push([dist, enemy]);
-      }
+      });
       chainTargets.sort((a, b) => a[0] - b[0]);
 
       const baseDamage = projectile.damage;
@@ -676,9 +850,9 @@ export class GameLoop {
 
     // Splash
     if (projectile.splashRadius > 0) {
-      for (const enemy of this.gameState.enemies.values()) {
-        if (target && enemy.enemyId === target.enemyId) continue;
-        if (!enemy.isAlive) continue;
+      this._forEachNearbyEnemy(impactX, impactY, projectile.splashRadius, (enemy) => {
+        if (target && enemy.enemyId === target.enemyId) return;
+        if (!enemy.isAlive) return;
         const dist = calculateDistance(enemy.x, enemy.y, impactX, impactY);
         if (dist <= projectile.splashRadius) {
           const splashDamage = Math.floor(projectile.damage * SPLASH_DAMAGE_MULT);
@@ -691,10 +865,26 @@ export class GameLoop {
             this._onEnemyKilled(enemy, enemiesToSpawn);
           }
         }
-      }
+      });
     }
 
     for (const e of enemiesToSpawn) this.gameState.enemies.set(e.enemyId, e);
+  }
+
+  private _emitKillEvent(enemy: EnemyInstance, killerTowerType: string, killerPlayerId: string, isExecute: boolean): void {
+    const isBoss = enemy.enemyType === EnemyType.Boss;
+    const isElite = !!enemy.eliteAffix;
+    if (isBoss || isElite || isExecute) {
+      this.pendingEvents.push({
+        type: 'enemy_killed',
+        enemyType: enemy.enemyType,
+        killerTowerType,
+        killerPlayerId,
+        isExecute,
+        isBoss,
+        isElite,
+      });
+    }
   }
 
   private _completeWave(): void {
@@ -708,6 +898,10 @@ export class GameLoop {
       let income = Math.floor(baseIncome * ds.incomeMult);
       if (!this.gameState.moneySharing && playerCount > 1) {
         income = Math.floor(income / playerCount);
+      }
+      // Add creep sending income bonus
+      if (player.creepIncome > 0) {
+        income += player.creepIncome;
       }
       player.addMoney(income);
       const interest = calculateInterest(player.money, player.interestRate, waveNum);

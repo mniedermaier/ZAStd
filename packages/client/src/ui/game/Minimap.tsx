@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { useGameStore } from '../../stores/game-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { useUIStore } from '../../stores/ui-store';
@@ -6,10 +6,29 @@ import { useUIStore } from '../../stores/ui-store';
 const MINIMAP_W = 160;
 const MINIMAP_H = 100;
 
+function lerpColor(r1: number, g1: number, b1: number, r2: number, g2: number, b2: number, t: number): string {
+  const r = Math.round(r1 + (r2 - r1) * t);
+  const g = Math.round(g1 + (g2 - g1) * t);
+  const b = Math.round(b1 + (b2 - b1) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+function dpsToColor(ratio: number): string {
+  // blue → yellow → red
+  if (ratio < 0.5) {
+    const t = ratio * 2;
+    return lerpColor(68, 68, 255, 255, 221, 68, t);
+  } else {
+    const t = (ratio - 0.5) * 2;
+    return lerpColor(255, 221, 68, 255, 68, 68, t);
+  }
+}
+
 export function Minimap() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const snapshot = useGameStore((s) => s.snapshot);
   const colorblindMode = useSettingsStore((s) => s.colorblindMode);
+  const [heatmapMode, setHeatmapMode] = useState(false);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !snapshot) return;
@@ -63,9 +82,25 @@ export function Minimap() {
     ctx.fillRect(ex * scaleX - 2, ey * scaleY - 2, 4, 4);
 
     // Towers
-    for (const tower of Object.values(snapshot.towers)) {
-      ctx.fillStyle = '#ffdd44';
-      ctx.fillRect(tower.x * scaleX, tower.y * scaleY, Math.max(scaleX, 1.5), Math.max(scaleY, 1.5));
+    if (heatmapMode) {
+      // Heatmap: color by DPS
+      const towers = Object.values(snapshot.towers);
+      let maxDps = 0;
+      const towerDps = towers.map(t => {
+        const dps = t.stats.damage * t.stats.fireRate;
+        if (dps > maxDps) maxDps = dps;
+        return { tower: t, dps };
+      });
+      for (const { tower, dps } of towerDps) {
+        const ratio = maxDps > 0 ? dps / maxDps : 0;
+        ctx.fillStyle = dpsToColor(ratio);
+        ctx.fillRect(tower.x * scaleX, tower.y * scaleY, Math.max(scaleX, 1.5), Math.max(scaleY, 1.5));
+      }
+    } else {
+      for (const tower of Object.values(snapshot.towers)) {
+        ctx.fillStyle = '#ffdd44';
+        ctx.fillRect(tower.x * scaleX, tower.y * scaleY, Math.max(scaleX, 1.5), Math.max(scaleY, 1.5));
+      }
     }
 
     // Enemies (colorblind-safe)
@@ -79,6 +114,55 @@ export function Minimap() {
       ctx.beginPath();
       ctx.arc(enemy.x * scaleX, enemy.y * scaleY, 1.5, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    // Wave direction arrow: animated arrow from spawn toward first checkpoint during active waves
+    const waveActive = snapshot.phase === 'wave_active';
+    const hasEnemies = Object.values(snapshot.enemies).some(e => e.isAlive);
+    if (waveActive && hasEnemies) {
+      const [spawnX, spawnY] = snapshot.map.spawn;
+      const firstCheckpoint = snapshot.map.checkpoints?.[0];
+      const targetX = firstCheckpoint ? firstCheckpoint[0] : snapshot.map.end[0];
+      const targetY = firstCheckpoint ? firstCheckpoint[1] : snapshot.map.end[1];
+
+      const fromX = spawnX * scaleX;
+      const fromY = spawnY * scaleY;
+      const toX = targetX * scaleX;
+      const toY = targetY * scaleY;
+
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 5) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const arrowLen = Math.min(dist * 0.6, 30);
+        const endX = fromX + nx * arrowLen;
+        const endY = fromY + ny * arrowLen;
+        const headLen = 5;
+
+        // Pulsing alpha
+        const pulseAlpha = 0.4 + 0.3 * Math.sin(Date.now() / 300);
+        ctx.globalAlpha = pulseAlpha;
+        ctx.strokeStyle = '#44ffff';
+        ctx.lineWidth = 1.5;
+
+        // Arrow shaft
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        // Arrowhead
+        const angle = Math.atan2(ny, nx);
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headLen * Math.cos(angle - Math.PI / 6), endY - headLen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headLen * Math.cos(angle + Math.PI / 6), endY - headLen * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
     }
 
     // Selected tower range circle
@@ -110,7 +194,7 @@ export function Minimap() {
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-  }, [snapshot, colorblindMode]);
+  }, [snapshot, colorblindMode, heatmapMode]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!snapshot) return;
@@ -134,6 +218,7 @@ export function Minimap() {
       opacity: 0.85,
       pointerEvents: 'auto',
       cursor: 'pointer',
+      position: 'relative',
     }}>
       <canvas
         ref={canvasRef}
@@ -142,6 +227,19 @@ export function Minimap() {
         style={{ display: 'block' }}
         onClick={handleClick}
       />
+      <button
+        onClick={(e) => { e.stopPropagation(); setHeatmapMode(!heatmapMode); }}
+        style={{
+          position: 'absolute', top: 2, right: 2,
+          padding: '1px 4px', fontSize: 8,
+          background: heatmapMode ? 'rgba(255, 68, 68, 0.3)' : 'rgba(26, 26, 58, 0.8)',
+          border: `1px solid ${heatmapMode ? '#ff4444' : '#333366'}`,
+          color: heatmapMode ? '#ff4444' : '#8888aa',
+          borderRadius: 3, cursor: 'pointer', lineHeight: 1.2,
+        }}
+      >
+        DPS
+      </button>
     </div>
   );
 }

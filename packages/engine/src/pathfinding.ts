@@ -283,22 +283,28 @@ export function updateEnemyPosition(
   speed: number,
   deltaTime: number,
 ): [number, number, number, boolean] {
-  if (pathIndex >= path.totalWaypoints) return [enemyX, enemyY, pathIndex, true];
+  let remaining = deltaTime;
+  let x = enemyX;
+  let y = enemyY;
 
-  const [targetX, targetY] = path.getWaypoint(pathIndex);
-  const [newX, newY, reached] = moveTowards(enemyX, enemyY, targetX, targetY, speed, deltaTime);
+  while (remaining > 0) {
+    if (pathIndex >= path.totalWaypoints) return [x, y, pathIndex, true];
 
-  if (reached) {
-    pathIndex++;
-    if (pathIndex >= path.totalWaypoints) return [newX, newY, pathIndex, true];
-    const remaining = speed > 0
-      ? deltaTime - calculateDistance(enemyX, enemyY, targetX, targetY) / speed
-      : 0;
-    if (remaining > 0) {
-      return updateEnemyPosition(newX, newY, pathIndex, path, speed, remaining);
+    const [targetX, targetY] = path.getWaypoint(pathIndex);
+    const [newX, newY, reached] = moveTowards(x, y, targetX, targetY, speed, remaining);
+
+    if (reached) {
+      const dist = calculateDistance(x, y, targetX, targetY);
+      remaining -= speed > 0 ? dist / speed : remaining;
+      x = newX;
+      y = newY;
+      pathIndex++;
+    } else {
+      return [newX, newY, pathIndex, false];
     }
   }
-  return [newX, newY, pathIndex, false];
+
+  return [x, y, pathIndex, pathIndex >= path.totalWaypoints];
 }
 
 /** Create a flying path through waypoints (straight lines between each). */

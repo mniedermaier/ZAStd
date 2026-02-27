@@ -75,6 +75,11 @@ export function processAction(gameState: GameState, action: ClientAction): { suc
       return transferred ? { success: true } : { success: false, message: 'Cannot send gold' };
     }
 
+    case 'gift_tower': {
+      const gifted = gameState.giftTower(action.playerId, action.towerId, action.targetPlayerId);
+      return gifted ? { success: true } : { success: false, message: 'Cannot gift tower' };
+    }
+
     case 'queue_upgrade': {
       const queued = gameState.queueUpgrade(action.playerId, action.towerId);
       return queued ? { success: true } : { success: false, message: 'Cannot queue upgrade' };
@@ -104,6 +109,16 @@ export function processAction(gameState: GameState, action: ClientAction): { suc
     case 'join_game_request': {
       const player = gameState.addPlayerMidGame(action.playerId, action.playerId, action.governor);
       return player ? { success: true } : { success: false, message: 'Game is full' };
+    }
+
+    case 'request_funding': {
+      const requested = gameState.requestFunding(action.playerId, action.towerId);
+      return requested ? { success: true } : { success: false, message: 'Cannot request funding' };
+    }
+
+    case 'contribute_funding': {
+      const contributed = gameState.contributeFunding(action.playerId, action.towerId, action.amount);
+      return contributed ? { success: true } : { success: false, message: 'Cannot contribute funding' };
     }
 
     case 'chat':

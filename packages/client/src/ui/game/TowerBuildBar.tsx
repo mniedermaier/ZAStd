@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { TowerType, TOWER_DEFINITIONS, GOVERNORS, COMMON_TOWERS, getRegularTowers, getAvailableTowers } from '@zastd/engine';
+import { TowerType, TOWER_DEFINITIONS, GOVERNORS, COMMON_TOWERS, getRegularTowers, getAvailableTowers, estimateTowerDPS, towerEfficiency } from '@zastd/engine';
 import { useUIStore } from '../../stores/ui-store';
 import { useGameStore } from '../../stores/game-store';
 
@@ -209,6 +209,9 @@ export function TowerBuildBar({ playerId }: TowerBuildBarProps) {
                 </div>
                 <div style={{ color: stats.damageType === 'magic' ? '#cc88ff' : '#ffaa88' }}>
                   {getTowerAbilityText(stats)}
+                </div>
+                <div style={{ color: '#44bbff', marginTop: 2, fontSize: 9 }}>
+                  DPS: {estimateTowerDPS(towerType)} | Eff: {towerEfficiency(towerType).toFixed(2)}
                 </div>
               </div>
             )}

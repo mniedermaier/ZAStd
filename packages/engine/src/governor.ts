@@ -69,6 +69,14 @@ export const GOVERNORS: Record<string, GovernorDefinition> = {
   },
 };
 
+/** Static towerType → governor key lookup (avoids O(n) scan per call) */
+export const TOWER_TO_GOVERNOR = new Map<string, string>();
+for (const [key, gov] of Object.entries(GOVERNORS)) {
+  for (const t of gov.towerTypes) {
+    TOWER_TO_GOVERNOR.set(t, key);
+  }
+}
+
 export const ULTIMATE_TOWERS = new Set(
   Object.values(GOVERNORS).map(g => g.towerTypes[3]),
 );

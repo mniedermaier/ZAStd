@@ -129,6 +129,11 @@ export interface TowerSnapshot {
   currentTarget: string | null;
   targetingMode?: string;
   activeSynergies: string[];
+  giftCooldown?: number;
+  autoUpgrade?: boolean;
+  fundingGoal?: number;
+  fundingCurrent?: number;
+  fundingContributors?: Record<string, number>;
   stats: {
     cost: number;
     damage: number;
@@ -175,8 +180,16 @@ export interface EnemySnapshot {
   stunEndTime: number;
   armorDebuff: number;
   armorDebuffEndTime: number;
+  traits?: string[];
+  dodgeCooldownEnd?: number;
+  burrowCooldownEnd?: number;
+  rallyBuffed?: boolean;
   isSentCreep?: boolean;
   sentByPlayerId?: string | null;
+  eliteAffix?: string;
+  shieldHealth?: number;
+  shieldMaxHealth?: number;
+  phaseActive?: boolean;
   stats: {
     speed: number;
     reward: number;
@@ -210,6 +223,8 @@ export interface PlayerSnapshot {
   ultimateUnlocked: boolean;
   abilityCooldownRemaining: number;
   abilityDamageBuffMult: number;
+  creepIncome?: number;
+  zoneCooldownRemaining?: number;
   bonuses: {
     damageMult: number;
     rangeMult: number;
@@ -252,6 +267,7 @@ export interface GameStateSnapshot {
   adaptiveScaling?: number;
   activeModifiers?: string[];
   scoreMultiplier?: number;
+  activeZones?: ActiveZone[];
   upgradeQueue?: Array<{ playerId: string; towerId: string; targetLevel: number }>;
   activeVotes?: Array<{ voteId: string; type: string; targetId?: string; voters: string[]; startTime: number }>;
   isTutorial?: boolean;
@@ -312,6 +328,12 @@ export interface GovernorDefinition {
   passiveBonus: string;
 }
 
+// Enemy traits
+export type EnemyTrait = 'dodge' | 'rally' | 'burrow' | 'mirror';
+
+// Elite affixes
+export type EliteAffix = 'deflector' | 'shielded' | 'juggernaut' | 'phase_shifter';
+
 // Wave mutators
 export type WaveMutatorType = 'swift' | 'fortified' | 'thrifty' | 'frugal' | 'swarm' | 'regenerating' | 'shielded' | 'chaos';
 
@@ -322,9 +344,24 @@ export interface WaveMutatorDefinition {
   color: string;
 }
 
+// Active zone abilities
+export interface ActiveZone {
+  zoneId: string;
+  playerId: string;
+  governor: string;
+  x: number;
+  y: number;
+  radius: number;
+  remainingDuration: number;
+  damagePerTick: number;
+  slowAmount: number;
+  slowDuration: number;
+}
+
 // Wave properties
 export interface WaveProperties {
   name: string;
   tags: string[];
   mutators?: WaveMutatorType[];
+  eliteAffix?: EliteAffix;
 }

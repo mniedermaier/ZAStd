@@ -4,6 +4,7 @@ import { useStatsStore, getUnlockedBadges } from '../../stores/stats-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { isSupabaseConfigured } from '../../supabase';
 import { LeaderboardPanel } from './LeaderboardPanel';
+import { ProfilePanel } from './ProfilePanel';
 
 interface MainMenuProps {
   onBrowseRooms: () => void;
@@ -21,6 +22,7 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
   const hasSupabase = isSupabaseConfigured();
   const stats = useStatsStore();
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showGameModes, setShowGameModes] = useState(false);
 
@@ -240,15 +242,26 @@ export function MainMenu({ onBrowseRooms, onCreateRoom, onJoinByCode, onPlaySolo
       })()}
 
       {(stats.gamesPlayed > 0 || hasSupabase) && (
-        <button
-          onClick={() => setShowLeaderboard(true)}
-          style={{ marginTop: 6, fontSize: 12, color: '#44bbff', padding: '6px 16px' }}
-        >
-          View Leaderboard
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <button
+            onClick={() => setShowLeaderboard(true)}
+            style={{ fontSize: 12, color: '#44bbff', padding: '6px 16px' }}
+          >
+            Leaderboard
+          </button>
+          {stats.gamesPlayed > 0 && (
+            <button
+              onClick={() => setShowProfile(true)}
+              style={{ fontSize: 12, color: '#cc88ff', padding: '6px 16px' }}
+            >
+              Profile
+            </button>
+          )}
+        </div>
       )}
 
       {showLeaderboard && <LeaderboardPanel onClose={() => setShowLeaderboard(false)} />}
+      {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} />}
 
       <div style={{ flex: '1 0 0', minHeight: 8 }} />
 

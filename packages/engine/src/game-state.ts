@@ -1,22 +1,26 @@
-import { GamePhase, TowerType, TargetingMode, GameStateSnapshot } from './types';
+import { GamePhase, TowerType, TargetingMode, GameStateSnapshot, ActiveZone } from './types';
 import { Player } from './player';
 import { TowerInstance, TOWER_DEFINITIONS, Projectile } from './tower';
-import { EnemyInstance, Wave, generateWave, createEnemy } from './enemy';
+import { EnemyInstance, Wave, generateWave, createEnemy, getEnemyTraits, ENEMY_DEFINITIONS } from './enemy';
 import { OccupancyGrid, Path, updateEnemyPosition, getFlyingPath } from './pathfinding';
-import { getAvailableTowers, getRegularTowers, isUltimateTower, COMMON_TOWERS, GOVERNORS } from './governor';
+import { getAvailableTowers, getRegularTowers, isUltimateTower, COMMON_TOWERS, GOVERNORS, TOWER_TO_GOVERNOR } from './governor';
 import {
   MAX_PLAYERS, MAP_SIZES, VALID_MAP_SIZES, VALID_DIFFICULTIES,
   AUTO_START_DELAY, MANUAL_START_COOLDOWN, VICTORY_WAVE,
   STARTING_MONEY, STARTING_LIVES, MAP_WAYPOINTS, MAP_SPAWN_END,
   DIFFICULTY_SCALING, TOWER_SELL_COOLDOWN, ABILITY_DEFINITIONS,
-  SYNERGY_DEFINITIONS, VALID_MAP_LAYOUTS,
+  SYNERGY_DEFINITIONS, VALID_MAP_LAYOUTS, CREEP_SEND_BY_TYPE,
   SPIRAL_WAYPOINTS, SPIRAL_SPAWN_END,
   CROSSROADS_WAYPOINTS, CROSSROADS_SPAWN_END,
   CHALLENGE_MODIFIERS,
-  CREEP_SEND_DEFINITIONS, TUTORIAL_WAVES, VOTE_TIMEOUT,
+  TUTORIAL_WAVES, VOTE_TIMEOUT,
   MAX_TOWER_LEVEL,
+  ELITE_HP_MULT, ELITE_SPEED_MULT, ELITE_REWARD_MULT,
+  SHIELD_HP_PCT,
+  ZONE_DEFINITIONS,
 } from './constants';
 import { EnemyType } from './types';
+import type { EliteAffix } from './types';
 
 let _uuid = 0;
 function uuid(): string {
@@ -37,6 +41,12 @@ export class GameState {
   isTutorial = false;
   upgradeQueue: Array<{ playerId: string; towerId: string; targetLevel: number }> = [];
   activeVotes = new Map<string, { type: 'send_early' | 'kick'; targetId?: string; voters: Set<string>; startTime: number }>();
+  auraDirty = true;
+  activeZones: ActiveZone[] = [];
+
+  // Dirty tracking for incremental serialization
+  _dirtyTowers = new Set<string>();
+  _dirtyEnemies = new Set<string>();
 
   phase: GamePhase = GamePhase.Lobby;
   sharedLives = STARTING_LIVES;
@@ -200,6 +210,7 @@ export class GameState {
       this.occupancyGrid.removeTower(tower.x, tower.y);
       this.towers.delete(tid);
     }
+    if (toRemove.length > 0) this.auraDirty = true;
     return true;
   }
 
@@ -252,9 +263,7 @@ export class GameState {
     const player = this.players.get(playerId)!;
     if (x < 0 || x >= this.gridWidth || y < 0 || y >= this.gridHeight) return [false, 'Out of bounds'];
 
-    for (const tower of this.towers.values()) {
-      if (tower.x === x && tower.y === y) return [false, 'Position occupied'];
-    }
+    if (this.occupancyGrid.isBlocked(x, y)) return [false, 'Position occupied'];
 
     const towerTypeStr = towerType as string;
     let available: string[];
@@ -293,6 +302,8 @@ export class GameState {
     this.towers.set(towerId, tower);
     player.towersPlaced++;
     this.recalculateSynergies();
+    this.auraDirty = true;
+    this._dirtyTowers.add(towerId);
     return tower;
   }
 
@@ -314,6 +325,8 @@ export class GameState {
     this._pendingPathChanged = true;
     this.towers.delete(towerId);
     this.recalculateSynergies();
+    this.auraDirty = true;
+    this._dirtyTowers.add(towerId);
     return true;
   }
 
@@ -332,6 +345,8 @@ export class GameState {
     if (!player) return false;
     if (!player.spendMoney(tower.getUpgradeCost())) return false;
     tower.upgrade();
+    this.auraDirty = true;
+    this._dirtyTowers.add(towerId);
     return true;
   }
 
@@ -374,10 +389,7 @@ export class GameState {
   }
 
   private _getGovernorForTower(towerType: TowerType): string | null {
-    for (const [key, gov] of Object.entries(GOVERNORS)) {
-      if (gov.towerTypes.includes(towerType)) return key;
-    }
-    return null;
+    return TOWER_TO_GOVERNOR.get(towerType) ?? null;
   }
 
   // Abilities
@@ -456,54 +468,98 @@ export class GameState {
     const ds = this.difficultyScaling;
     const enemy = createEnemy(enemyTypeToSpawn, enemyId, spawnX, spawnY, this.waveNumber, this.pathVersion, ds.healthMult, ds.speedMult);
 
-    // Apply endless exponential scaling starting at wave 5
+    // Apply all spawn-time stat modifications in-place (single stats copy)
+    const stats = { ...enemy.stats };
+    let hpChanged = false;
+
+    // Endless exponential scaling starting at wave 5
     if (this.endlessMode && this.waveNumber >= 5) {
       const endlessMult = Math.pow(1.15, this.waveNumber - 5);
-      const endlessSpeedMult = 1 + 0.02 * (this.waveNumber - 5);
-      const newHp = Math.floor(enemy.stats.maxHealth * endlessMult);
-      enemy.stats = { ...enemy.stats, maxHealth: newHp, speed: enemy.stats.speed * endlessSpeedMult };
-      enemy.currentHealth = newHp;
+      stats.maxHealth = Math.floor(stats.maxHealth * endlessMult);
+      stats.speed *= 1 + 0.02 * (this.waveNumber - 5);
+      hpChanged = true;
     }
 
-    // Apply adaptive scaling (multiplayer)
+    // Adaptive scaling (multiplayer)
     if (this.adaptiveScaling !== 1.0) {
-      const newHp = Math.floor(enemy.stats.maxHealth * this.adaptiveScaling);
-      enemy.stats = { ...enemy.stats, maxHealth: newHp };
-      enemy.currentHealth = newHp;
+      stats.maxHealth = Math.floor(stats.maxHealth * this.adaptiveScaling);
+      hpChanged = true;
     }
 
-    // Apply wave mutator effects to spawned enemy
+    // Wave mutator effects
     const mutators = this.currentWave.properties?.mutators;
     if (mutators) {
-      if (mutators.includes('swift')) {
-        enemy.stats = { ...enemy.stats, speed: enemy.stats.speed * 1.25 };
-      }
-      if (mutators.includes('fortified')) {
-        const newHp = Math.floor(enemy.stats.maxHealth * 1.3);
-        enemy.stats = { ...enemy.stats, maxHealth: newHp };
-        enemy.currentHealth = newHp;
-      }
-      if (mutators.includes('swarm')) {
-        const newHp = Math.floor(enemy.stats.maxHealth * 0.5);
-        enemy.stats = { ...enemy.stats, maxHealth: newHp };
-        enemy.currentHealth = newHp;
-      }
-      if (mutators.includes('regenerating')) {
-        enemy.stats = { ...enemy.stats, healPerSecond: enemy.stats.healPerSecond + 2 };
-      }
-      if (mutators.includes('shielded')) {
-        enemy.stats = { ...enemy.stats, armor: enemy.stats.armor + 0.15 };
-      }
+      if (mutators.includes('swift')) stats.speed *= 1.25;
+      if (mutators.includes('fortified')) { stats.maxHealth = Math.floor(stats.maxHealth * 1.3); hpChanged = true; }
+      if (mutators.includes('swarm')) { stats.maxHealth = Math.floor(stats.maxHealth * 0.5); hpChanged = true; }
+      if (mutators.includes('regenerating')) stats.healPerSecond += 2;
+      if (mutators.includes('shielded')) stats.armor += 0.15;
     }
 
+    enemy.stats = stats;
+    if (hpChanged) enemy.currentHealth = stats.maxHealth;
+
+    // Assign enemy traits based on wave and type
+    const traits = getEnemyTraits(enemyTypeToSpawn, this.waveNumber);
+    if (traits.length > 0) enemy.traits = traits;
+
     this.enemies.set(enemyId, enemy);
+    this._dirtyEnemies.add(enemyId);
     this.currentWave.spawnIndex++;
     this.currentWave.lastSpawnTime = currentTime;
+
+    // Spawn elite on first enemy of elite waves
+    if (this.currentWave.spawnIndex === 1 && this.currentWave.properties?.eliteAffix) {
+      this._spawnElite(this.currentWave.properties.eliteAffix);
+    }
+
     return enemy;
+  }
+
+  private _spawnElite(affix: EliteAffix): void {
+    const [spawnX, spawnY] = this.sharedPath.getSpawnPosition();
+    const enemyId = uuid();
+    const ds = this.difficultyScaling;
+    const elite = createEnemy(EnemyType.Tank, enemyId, spawnX, spawnY, this.waveNumber, this.pathVersion, ds.healthMult, ds.speedMult);
+
+    // Apply elite multipliers
+    const stats = { ...elite.stats };
+    stats.maxHealth = Math.floor(stats.maxHealth * ELITE_HP_MULT);
+    stats.speed *= ELITE_SPEED_MULT;
+    stats.reward = Math.floor(stats.reward * ELITE_REWARD_MULT);
+
+    // Apply same scaling as normal enemies
+    if (this.endlessMode && this.waveNumber >= 5) {
+      const endlessMult = Math.pow(1.15, this.waveNumber - 5);
+      stats.maxHealth = Math.floor(stats.maxHealth * endlessMult);
+      stats.speed *= 1 + 0.02 * (this.waveNumber - 5);
+    }
+    if (this.adaptiveScaling !== 1.0) {
+      stats.maxHealth = Math.floor(stats.maxHealth * this.adaptiveScaling);
+    }
+    const mutators = this.currentWave?.properties?.mutators;
+    if (mutators) {
+      if (mutators.includes('swift')) stats.speed *= 1.25;
+      if (mutators.includes('fortified')) stats.maxHealth = Math.floor(stats.maxHealth * 1.3);
+    }
+
+    elite.stats = stats;
+    elite.currentHealth = stats.maxHealth;
+    elite.eliteAffix = affix;
+
+    // Initialize shield for shielded affix
+    if (affix === 'shielded') {
+      elite.shieldMaxHealth = Math.floor(stats.maxHealth * SHIELD_HP_PCT);
+      elite.shieldHealth = elite.shieldMaxHealth;
+    }
+
+    this.enemies.set(enemyId, elite);
+    this._dirtyEnemies.add(enemyId);
   }
 
   removeEnemy(enemyId: string): void {
     this.enemies.delete(enemyId);
+    this._dirtyEnemies.add(enemyId);
   }
 
   takeSharedDamage(amount: number): void {
@@ -566,13 +622,29 @@ export class GameState {
     return true;
   }
 
+  // --- Tower Gifting ---
+  giftTower(fromPlayerId: string, towerId: string, toPlayerId: string): boolean {
+    if (fromPlayerId === toPlayerId) return false;
+    const from = this.players.get(fromPlayerId);
+    const to = this.players.get(toPlayerId);
+    if (!from || !to) return false;
+    const tower = this.towers.get(towerId);
+    if (!tower) return false;
+    if (tower.ownerId !== fromPlayerId) return false;
+    if (tower.giftCooldown > 0) return false;
+    tower.ownerId = toPlayerId;
+    tower.giftCooldown = 10;
+    this.auraDirty = true;
+    return true;
+  }
+
   // --- Creep Sending ---
   sendCreeps(playerId: string, enemyType: string, count: number): boolean {
     if (this.phase !== GamePhase.WaveActive && this.phase !== GamePhase.Playing && this.phase !== GamePhase.WaveComplete) return false;
     const player = this.players.get(playerId);
     if (!player) return false;
 
-    const def = CREEP_SEND_DEFINITIONS.find(d => d.type === enemyType);
+    const def = CREEP_SEND_BY_TYPE.get(enemyType);
     if (!def) return false;
     if (this.waveNumber < def.unlockWave) return false;
 
@@ -587,6 +659,7 @@ export class GameState {
       enemy.isSentCreep = true;
       enemy.sentByPlayerId = playerId;
       this.enemies.set(enemyId, enemy);
+      this._dirtyEnemies.add(enemyId);
     }
     return true;
   }
@@ -617,26 +690,28 @@ export class GameState {
   }
 
   processUpgradeQueue(): void {
-    const toRemove: number[] = [];
+    let writeIdx = 0;
     for (let i = 0; i < this.upgradeQueue.length; i++) {
       const entry = this.upgradeQueue[i];
       const tower = this.towers.get(entry.towerId);
-      if (!tower) { toRemove.push(i); continue; }
-      if (tower.level >= entry.targetLevel) { toRemove.push(i); continue; }
+      if (!tower) continue;
+      if (tower.level >= entry.targetLevel) continue;
 
       const player = this.players.get(entry.playerId);
-      if (!player) { toRemove.push(i); continue; }
+      if (!player) continue;
 
       const cost = tower.getUpgradeCost();
       if (player.money >= cost && tower.canUpgrade()) {
         player.spendMoney(cost);
         tower.upgrade();
-        toRemove.push(i);
+        this.auraDirty = true;
+        continue;
       }
+
+      // Keep this entry (not yet processable)
+      this.upgradeQueue[writeIdx++] = entry;
     }
-    for (let i = toRemove.length - 1; i >= 0; i--) {
-      this.upgradeQueue.splice(toRemove[i], 1);
-    }
+    this.upgradeQueue.length = writeIdx;
   }
 
   // --- Voting System ---
@@ -704,6 +779,72 @@ export class GameState {
     return player;
   }
 
+  // --- Zone Abilities (secondary ability for fire/ice governors with ultimate) ---
+  useZoneAbility(playerId: string, x: number, y: number): boolean {
+    const player = this.players.get(playerId);
+    if (!player?.governor || !player.ultimateUnlocked) return false;
+    const zoneKey = player.governor === 'fire' ? 'fire_lava' : player.governor === 'ice' ? 'ice_frost' : null;
+    if (!zoneKey) return false;
+    const def = ZONE_DEFINITIONS[zoneKey];
+    if (!def) return false;
+    const now = Date.now() / 1000;
+    if (now < player.zoneCooldownEnd) return false;
+    player.zoneCooldownEnd = now + def.cooldown;
+    this.activeZones.push({
+      zoneId: uuid(),
+      playerId,
+      governor: player.governor,
+      x, y,
+      radius: def.radius,
+      remainingDuration: def.duration,
+      damagePerTick: def.damagePerTick,
+      slowAmount: def.slowAmount,
+      slowDuration: def.slowDuration,
+    });
+    return true;
+  }
+
+  // --- Auto-Upgrade Toggle ---
+  setAutoUpgrade(playerId: string, towerId: string, enabled: boolean): boolean {
+    const tower = this.towers.get(towerId);
+    if (!tower || tower.ownerId !== playerId) return false;
+    tower.autoUpgrade = enabled;
+    return true;
+  }
+
+  // --- Tower Co-Funding ---
+  requestFunding(playerId: string, towerId: string): boolean {
+    const tower = this.towers.get(towerId);
+    if (!tower || tower.ownerId !== playerId) return false;
+    if (!tower.canUpgrade()) return false;
+    if (tower.fundingGoal > 0) return false;
+    tower.fundingGoal = tower.getUpgradeCost();
+    tower.fundingCurrent = 0;
+    tower.fundingContributors.clear();
+    return true;
+  }
+
+  contributeFunding(playerId: string, towerId: string, amount: number): boolean {
+    const tower = this.towers.get(towerId);
+    if (!tower || tower.fundingGoal <= 0) return false;
+    const player = this.players.get(playerId);
+    if (!player) return false;
+    const remaining = tower.fundingGoal - tower.fundingCurrent;
+    const contribution = Math.min(amount, remaining);
+    if (contribution <= 0) return false;
+    if (!player.spendMoney(contribution)) return false;
+    tower.fundingCurrent += contribution;
+    tower.fundingContributors.set(playerId, (tower.fundingContributors.get(playerId) ?? 0) + contribution);
+    if (tower.fundingCurrent >= tower.fundingGoal) {
+      tower.upgrade();
+      tower.fundingGoal = 0;
+      tower.fundingCurrent = 0;
+      tower.fundingContributors.clear();
+      this.auraDirty = true;
+    }
+    return true;
+  }
+
   resetGame(): void {
     this.phase = GamePhase.Lobby;
     this.waveNumber = 0;
@@ -717,9 +858,13 @@ export class GameState {
     this.activeModifiers = [];
     this.upgradeQueue = [];
     this.activeVotes.clear();
+    this.activeZones = [];
     this.towers.clear();
     this.projectiles.clear();
     this.enemies.clear();
+    this.auraDirty = true;
+    this._dirtyTowers.clear();
+    this._dirtyEnemies.clear();
     this._initGrid();
 
     for (const player of this.players.values()) {
@@ -787,6 +932,93 @@ export class GameState {
       },
       endlessMode: this.endlessMode,
       adaptiveScaling: this.adaptiveScaling !== 1.0 ? this.adaptiveScaling : undefined,
+      activeZones: this.activeZones.length > 0 ? [...this.activeZones] : undefined,
+      activeModifiers: this.activeModifiers,
+      scoreMultiplier: this.scoreMultiplier,
+      upgradeQueue: this.upgradeQueue.length > 0 ? [...this.upgradeQueue] : undefined,
+      activeVotes: this.activeVotes.size > 0
+        ? [...this.activeVotes.entries()].map(([voteId, v]) => ({
+          voteId, type: v.type, targetId: v.targetId, voters: [...v.voters], startTime: v.startTime,
+        }))
+        : undefined,
+      isTutorial: this.isTutorial || undefined,
+      map: {
+        width: this.gridWidth,
+        height: this.gridHeight,
+        path: this.sharedPath.serialize(),
+        pathVersion: this.pathVersion,
+        pathCells: this.occupancyGrid.getPathCells().map(([x, y]) => [x, y]),
+        spawn: [...this.occupancyGrid.spawn],
+        end: [...this.occupancyGrid.end],
+        checkpoints: this.occupancyGrid.checkpoints.map(([x, y]) => [x, y]),
+      },
+      timestamp: Date.now() / 1000,
+    };
+  }
+
+  /** Incremental serialization: only dirty towers/enemies + full map/players/settings.
+   *  Clears dirty sets after serialization. For future multiplayer bandwidth optimization. */
+  serializeIncremental(): GameStateSnapshot {
+    const players: Record<string, ReturnType<Player['serialize']>> = {};
+    for (const [pid, p] of this.players) players[pid] = p.serialize();
+
+    // Only serialize dirty towers (or all if none dirty — first sync)
+    const towers: Record<string, ReturnType<TowerInstance['serialize']>> = {};
+    if (this._dirtyTowers.size > 0) {
+      for (const tid of this._dirtyTowers) {
+        const t = this.towers.get(tid);
+        if (t) towers[tid] = t.serialize();
+      }
+    } else {
+      for (const [tid, t] of this.towers) towers[tid] = t.serialize();
+    }
+
+    // Only serialize dirty enemies (or all if none dirty — first sync)
+    const enemies: Record<string, ReturnType<EnemyInstance['serialize']>> = {};
+    if (this._dirtyEnemies.size > 0) {
+      for (const eid of this._dirtyEnemies) {
+        const e = this.enemies.get(eid);
+        if (e) enemies[eid] = e.serialize();
+      }
+    } else {
+      for (const [eid, e] of this.enemies) enemies[eid] = e.serialize();
+    }
+
+    const projectiles: Record<string, { projectileId: string; towerId: string; targetId: string; x: number; y: number }> = {};
+    for (const [pid, p] of this.projectiles) {
+      projectiles[pid] = {
+        projectileId: p.projectileId,
+        towerId: p.towerId,
+        targetId: p.targetId,
+        x: p.x,
+        y: p.y,
+      };
+    }
+
+    // Clear dirty sets after serialization
+    this._dirtyTowers.clear();
+    this._dirtyEnemies.clear();
+
+    return {
+      phase: this.phase,
+      waveNumber: this.waveNumber,
+      sharedLives: this.sharedLives,
+      nextWaveCountdown: this.getNextWaveCountdown(),
+      manualStartCooldown: this.getManualStartCooldown(),
+      players,
+      towers,
+      enemies,
+      projectiles,
+      currentWave: this.currentWave?.serialize() ?? null,
+      settings: {
+        mapSize: this.mapSize,
+        mapLayout: this.mapLayout,
+        difficulty: this.difficulty,
+        moneySharing: this.moneySharing,
+      },
+      endlessMode: this.endlessMode,
+      adaptiveScaling: this.adaptiveScaling !== 1.0 ? this.adaptiveScaling : undefined,
+      activeZones: this.activeZones.length > 0 ? [...this.activeZones] : undefined,
       activeModifiers: this.activeModifiers,
       scoreMultiplier: this.scoreMultiplier,
       upgradeQueue: this.upgradeQueue.length > 0 ? [...this.upgradeQueue] : undefined,

@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   GameState, GameLoop, TowerType, GamePhase,
-  getAvailableTowers, getRegularTowers, COMMON_TOWERS,
+  getAvailableTowers, getRegularTowers, COMMON_TOWERS, GOVERNORS,
   WAVE_BASE_INCOME, WAVE_INCOME_PER_WAVE, DIFFICULTY_SCALING,
   generateDailyChallenge, generateWeeklyChallenge, ReplayRecorder,
 } from '@zastd/engine';
 import type { ReplayData } from '@zastd/engine';
 import type { DailyChallengeConfig, WeeklyChallengeConfig } from '@zastd/engine';
 import type { TargetingMode } from '@zastd/engine';
-import { getMasteryLevel } from './stores/stats-store';
+import { getMasteryLevel, getUnlockedBadges, type Badge } from './stores/stats-store';
 import { useGameStore } from './stores/game-store';
 import { useLobbyStore } from './stores/lobby-store';
 import { useUIStore } from './stores/ui-store';
@@ -32,6 +32,8 @@ import {
   playPlaceTower, playUpgradeTower, playSellTower,
   playWaveStart, playWaveComplete, playVictory, playDefeat,
   playUIClick,
+  startLowLivesAlarm, stopLowLivesAlarm,
+  updateMusicIntensity, updateTowerAmbience, stopAllHums,
 } from './audio/SoundManager';
 
 function haptic(ms: number | number[] = 15) {
@@ -44,8 +46,23 @@ import { LoadingSpinner } from './ui/shared/LoadingSpinner';
 import { TutorialOverlay } from './ui/game/TutorialOverlay';
 import { ReplayViewer } from './ui/game/ReplayViewer';
 import { useReplayStore } from './stores/replay-store';
+import { useEventLogStore } from './ui/game/EventLog';
 
 const SOLO_PLAYER_ID = 'local-player';
+
+/** Snapshot badges before recordGameEnd, call recordGameEnd, then diff to find newly unlocked badges. */
+function recordGameEndWithBadges(
+  recordGameEnd: (...args: any[]) => void,
+  args: Parameters<typeof recordGameEnd>,
+): Badge[] {
+  const store = useStatsStore.getState();
+  const beforeBadges = getUnlockedBadges(store, store.leaderboard);
+  const beforeIds = new Set(beforeBadges.map(b => b.id));
+  recordGameEnd(...args);
+  const storeAfter = useStatsStore.getState();
+  const afterBadges = getUnlockedBadges(storeAfter, storeAfter.leaderboard);
+  return afterBadges.filter(b => !beforeIds.has(b.id));
+}
 
 export function App() {
   const appPhase = useLobbyStore((s) => s.appPhase);
@@ -357,7 +374,7 @@ function SoloMode() {
   const recordGameEnd = useStatsStore((s) => s.recordGameEnd);
   const inGame = appPhase === 'solo_game';
 
-  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; replayData?: ReplayData | null } | null>(null);
+  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; replayData?: ReplayData | null; newBadges?: Badge[] } | null>(null);
   const [prevWaveNumber, setPrevWaveNumber] = useState(0);
   const ultimateNotifiedRef = useRef(false);
 
@@ -398,27 +415,69 @@ function SoloMode() {
         useToastStore.getState().addToast('Ultimate Tower unlocked!', 'warning', 5000);
       }
 
+      // Audio: low-lives alarm
+      if (snap.sharedLives <= 5 && snap.sharedLives > 0) {
+        startLowLivesAlarm(snap.sharedLives);
+      } else {
+        stopLowLivesAlarm();
+      }
+
+      // Audio: dynamic music layers
+      const waveActive = snap.phase === 'wave_active';
+      const enemyCount = Object.values(snap.enemies).filter(e => e.isAlive).length;
+      const isBossWave = snap.waveNumber % 10 === 0 && waveActive;
+      updateMusicIntensity(waveActive, enemyCount, isBossWave);
+
+      // Audio: tower ambient hum
+      const govSet = new Set<string>();
+      for (const t of Object.values(snap.towers)) {
+        for (const [key, gov] of Object.entries(GOVERNORS as Record<string, { towerTypes: string[] }>)) {
+          if (gov.towerTypes.includes(t.towerType)) govSet.add(key);
+        }
+      }
+      updateTowerAmbience(govSet);
+
       if (gameLoopRef.current) {
         const events = gameLoopRef.current.drainEvents();
+        // Forward VFX-relevant events to game store for GameScene consumption
+        const vfxEvents = events.filter(ev => ev.type === 'enemy_dodged' || ev.type === 'mirror_damage' || ev.type === 'enemy_killed');
+        if (vfxEvents.length > 0) useGameStore.getState().pushGameEvents(vfxEvents);
         for (const ev of events) {
           if (ev.type === 'game_over') {
             const victory = ev.victory as boolean;
             if (victory) playVictory(); else playDefeat();
+            stopLowLivesAlarm();
+            stopAllHums();
             const gameCtx = { difficulty: snap.settings.difficulty, mapSize: snap.settings.mapSize, playerCount: Object.keys(snap.players).length, gameSpeed: useSettingsStore.getState().gameSpeed };
-            recordGameEnd(victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx);
-            setGameOver({ victory, stats: ev.stats as any, waveReached: snap.waveNumber, livesRemaining: snap.sharedLives, ...gameCtx, replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null });
+            const newBadges = recordGameEndWithBadges(recordGameEnd, [victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx]);
+            setGameOver({ victory, stats: ev.stats as any, waveReached: snap.waveNumber, livesRemaining: snap.sharedLives, ...gameCtx, replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null, newBadges });
+          }
+          if (ev.type === 'enemy_killed') {
+            const enemyType = (ev as any).enemyType as string;
+            const killerTower = (ev as any).killerTowerType as string;
+            const isExec = (ev as any).isExecute as boolean;
+            const isBoss = (ev as any).isBoss as boolean;
+            const isElite = (ev as any).isElite as boolean;
+            let label = '';
+            if (isBoss) label = `Boss (${enemyType}) killed by ${killerTower}!`;
+            else if (isElite) label = `Elite ${enemyType} killed by ${killerTower}!`;
+            else if (isExec) label = `${enemyType} executed by ${killerTower}!`;
+            const killColor = isBoss ? '#ff4466' : isElite ? '#cc88ff' : '#ffaa88';
+            if (label) useEventLogStore.getState().addEntry(label, killColor);
           }
           if (ev.type === 'game_reset') {
             stopRef.current?.();
             gameLoopRef.current = null;
             replayRecorderRef.current = null;
             setGameOver(null);
+            stopLowLivesAlarm();
+            stopAllHums();
             setAppPhase('solo_lobby');
           }
         }
       }
     }, 50);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); stopLowLivesAlarm(); };
   }, [inGame, gameState, setSnapshot, prevWaveNumber]);
 
   useEffect(() => {
@@ -687,6 +746,7 @@ function SoloMode() {
             livesRemaining={gameOver.livesRemaining}
             difficulty={gameOver.difficulty}
             replayData={gameOver.replayData}
+            newBadges={gameOver.newBadges}
             governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
           />
         );
@@ -723,7 +783,7 @@ function DailyMode() {
   const recordGameEnd = useStatsStore((s) => s.recordGameEnd);
   const inGame = appPhase === 'daily_game';
 
-  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; replayData?: ReplayData | null } | null>(null);
+  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; replayData?: ReplayData | null; newBadges?: Badge[] } | null>(null);
   const [prevWaveNumber, setPrevWaveNumber] = useState(0);
   const ultimateNotifiedRef = useRef(false);
 
@@ -771,8 +831,8 @@ function DailyMode() {
             const victory = ev.victory as boolean;
             if (victory) playVictory(); else playDefeat();
             const gameCtx = { difficulty: snap.settings.difficulty, mapSize: snap.settings.mapSize, playerCount: 1, gameSpeed: useSettingsStore.getState().gameSpeed };
-            recordGameEnd(victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx);
-            setGameOver({ victory, stats: ev.stats as any, waveReached: snap.waveNumber, livesRemaining: snap.sharedLives, ...gameCtx, replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null });
+            const newBadges = recordGameEndWithBadges(recordGameEnd, [victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx]);
+            setGameOver({ victory, stats: ev.stats as any, waveReached: snap.waveNumber, livesRemaining: snap.sharedLives, ...gameCtx, replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null, newBadges });
           }
           if (ev.type === 'game_reset') {
             stopRef.current?.();
@@ -1042,6 +1102,7 @@ function DailyMode() {
             livesRemaining={gameOver.livesRemaining}
             difficulty={gameOver.difficulty}
             replayData={gameOver.replayData}
+            newBadges={gameOver.newBadges}
             governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
           />
         );
@@ -1073,7 +1134,7 @@ function EndlessMode() {
   const inGame = appPhase === 'endless_game';
 
   const [selectedModifiers, setSelectedModifiers] = useState<string[]>([]);
-  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; scoreMultiplier?: number; replayData?: ReplayData | null } | null>(null);
+  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; scoreMultiplier?: number; replayData?: ReplayData | null; newBadges?: Badge[] } | null>(null);
   const [prevWaveNumber, setPrevWaveNumber] = useState(0);
   const ultimateNotifiedRef = useRef(false);
 
@@ -1124,12 +1185,13 @@ function EndlessMode() {
               isEndless: true, gameSpeed: useSettingsStore.getState().gameSpeed,
               modifierCount: gameState.activeModifiers.length,
             };
-            recordGameEnd(victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx);
+            const newBadges = recordGameEndWithBadges(recordGameEnd, [victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx]);
             setGameOver({
               victory, stats: ev.stats as any, waveReached: snap.waveNumber,
               livesRemaining: snap.sharedLives, ...gameCtx,
               scoreMultiplier: snap.scoreMultiplier,
               replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null,
+              newBadges,
             });
           }
           if (ev.type === 'game_reset') {
@@ -1421,6 +1483,7 @@ function EndlessMode() {
             endlessMode
             scoreMultiplier={gameOver.scoreMultiplier}
             replayData={gameOver.replayData}
+            newBadges={gameOver.newBadges}
             governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
           />
         );
@@ -1443,7 +1506,7 @@ function MultiplayerMode() {
   const setIsPaused = useSettingsStore((s) => s.setIsPaused);
   const recordGameEnd = useStatsStore((s) => s.recordGameEnd);
 
-  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number } | null>(null);
+  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; newBadges?: Badge[] } | null>(null);
 
   const rm = (window as any).__roomManager as RoomManager | undefined;
   const playerId = ((window as any).__playerId as string) || 'unknown';
@@ -1455,8 +1518,8 @@ function MultiplayerMode() {
         if (victory) playVictory(); else playDefeat();
         const snap = useGameStore.getState().snapshot;
         const gameCtx = { difficulty: snap?.settings.difficulty ?? 'normal', mapSize: snap?.settings.mapSize ?? 'medium', playerCount: snap ? Object.keys(snap.players).length : 1 };
-        recordGameEnd(victory, stats, snap?.waveNumber ?? 0, playerId, gameCtx);
-        setGameOver({ victory, stats, waveReached: snap?.waveNumber, livesRemaining: snap?.sharedLives, ...gameCtx });
+        const newBadges = recordGameEndWithBadges(recordGameEnd, [victory, stats, snap?.waveNumber ?? 0, playerId, gameCtx]);
+        setGameOver({ victory, stats, waveReached: snap?.waveNumber, livesRemaining: snap?.sharedLives, ...gameCtx, newBadges });
       };
     }
   }, [rm]);
@@ -1550,6 +1613,18 @@ function MultiplayerMode() {
 
   const handleSendGold = useCallback((targetPlayerId: string, amount: number) => {
     rm?.sendGold(targetPlayerId, amount);
+  }, [rm]);
+
+  const handleGiftTower = useCallback((towerId: string, targetPlayerId: string) => {
+    rm?.giftTower(towerId, targetPlayerId);
+  }, [rm]);
+
+  const handleRequestFunding = useCallback((towerId: string) => {
+    rm?.requestFunding(towerId);
+  }, [rm]);
+
+  const handleContributeFunding = useCallback((towerId: string, amount: number) => {
+    rm?.contributeFunding(towerId, amount);
   }, [rm]);
 
   const handleSendChat = useCallback((text: string) => {
@@ -1660,7 +1735,11 @@ function MultiplayerMode() {
         onQueueUpgrade={handleQueueUpgrade}
         onCancelQueue={handleCancelQueue}
         onSendGold={handleSendGold}
+        onGiftTower={handleGiftTower}
+        onRequestFunding={handleRequestFunding}
+        onContributeFunding={handleContributeFunding}
         showChat={true}
+        isSpectating={useLobbyStore.getState().isSpectating}
       />
       {gameOver && (
         <GameOverModal
@@ -1670,6 +1749,7 @@ function MultiplayerMode() {
           waveReached={gameOver.waveReached}
           livesRemaining={gameOver.livesRemaining}
           difficulty={gameOver.difficulty}
+          newBadges={gameOver.newBadges}
         />
       )}
     </>
@@ -1931,7 +2011,7 @@ function WeeklyMode() {
   const recordGameEnd = useStatsStore((s) => s.recordGameEnd);
   const inGame = appPhase === 'weekly_game';
 
-  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; replayData?: ReplayData | null } | null>(null);
+  const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; replayData?: ReplayData | null; newBadges?: Badge[] } | null>(null);
   const [prevWaveNumber, setPrevWaveNumber] = useState(0);
   const ultimateNotifiedRef = useRef(false);
 
@@ -1968,8 +2048,8 @@ function WeeklyMode() {
             const victory = ev.victory as boolean;
             if (victory) playVictory(); else playDefeat();
             const gameCtx = { difficulty: snap.settings.difficulty, mapSize: snap.settings.mapSize, playerCount: 1, gameSpeed: useSettingsStore.getState().gameSpeed, modifierCount: gameState.activeModifiers.length };
-            recordGameEnd(victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx);
-            setGameOver({ victory, stats: ev.stats as any, waveReached: snap.waveNumber, livesRemaining: snap.sharedLives, difficulty: snap.settings.difficulty, replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null });
+            const newBadges = recordGameEndWithBadges(recordGameEnd, [victory, ev.stats as any, snap.waveNumber, SOLO_PLAYER_ID, gameCtx]);
+            setGameOver({ victory, stats: ev.stats as any, waveReached: snap.waveNumber, livesRemaining: snap.sharedLives, difficulty: snap.settings.difficulty, replayData: (ev as any).replayData ?? replayRecorderRef.current?.getData() ?? null, newBadges });
           }
           if (ev.type === 'game_reset') { stopRef.current?.(); gameLoopRef.current = null; replayRecorderRef.current = null; setGameOver(null); setAppPhase('weekly_lobby'); }
         }
@@ -2075,6 +2155,7 @@ function WeeklyMode() {
           <GameOverModal victory={gameOver.victory} stats={gameOver.stats} onClose={handleGameOverClose} onRematch={handleRematch}
             waveReached={gameOver.waveReached} livesRemaining={gameOver.livesRemaining} difficulty={gameOver.difficulty}
             replayData={gameOver.replayData}
+            newBadges={gameOver.newBadges}
             governorMasteryInfo={tier && mastery ? { tierName: tier.name, tierColor: tier.color, gamesPlayed: mastery.gamesPlayed, gamesWon: mastery.gamesWon } : null}
           />
         );

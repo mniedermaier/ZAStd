@@ -1,4 +1,33 @@
 import Phaser from 'phaser';
+import { ObjectPool } from './ObjectPool';
+
+let circlePool: ObjectPool<Phaser.GameObjects.Arc> | null = null;
+let poolScene: Phaser.Scene | null = null;
+
+export function initImpactPool(scene: Phaser.Scene): void {
+  poolScene = scene;
+  circlePool = new ObjectPool<Phaser.GameObjects.Arc>(
+    () => {
+      const c = scene.add.circle(0, 0, 6, 0xffffff, 0.6);
+      c.setDepth(9);
+      return c;
+    },
+    (c) => {
+      c.setAlpha(1);
+      c.setScale(1);
+      c.setPosition(0, 0);
+    },
+    30,
+  );
+}
+
+export function destroyImpactPool(): void {
+  if (circlePool) {
+    circlePool.destroy();
+    circlePool = null;
+  }
+  poolScene = null;
+}
 
 export function showImpact(
   scene: Phaser.Scene,
@@ -7,18 +36,38 @@ export function showImpact(
   color = 0xffffff,
   radius = 6,
 ): void {
-  const circle = scene.add.circle(x, y, radius, color, 0.6);
-  circle.setDepth(9);
+  if (circlePool) {
+    const circle = circlePool.acquire();
+    circle.setPosition(x, y);
+    circle.setRadius(radius);
+    circle.setFillStyle(color, 0.6);
+    circle.setAlpha(0.6);
+    circle.setScale(1);
+    circle.setDepth(9);
 
-  scene.tweens.add({
-    targets: circle,
-    scaleX: 2,
-    scaleY: 2,
-    alpha: 0,
-    duration: 300,
-    ease: 'Power2',
-    onComplete: () => circle.destroy(),
-  });
+    scene.tweens.add({
+      targets: circle,
+      scaleX: 2,
+      scaleY: 2,
+      alpha: 0,
+      duration: 300,
+      ease: 'Power2',
+      onComplete: () => circlePool?.release(circle),
+    });
+  } else {
+    const circle = scene.add.circle(x, y, radius, color, 0.6);
+    circle.setDepth(9);
+
+    scene.tweens.add({
+      targets: circle,
+      scaleX: 2,
+      scaleY: 2,
+      alpha: 0,
+      duration: 300,
+      ease: 'Power2',
+      onComplete: () => circle.destroy(),
+    });
+  }
 }
 
 export function showChainLightning(
@@ -459,19 +508,149 @@ export function showDeathBurst(
   for (let i = 0; i < count; i++) {
     const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
     const dist = 100 + Math.random() * 50;
-    const particle = scene.add.circle(x, y, 3, color, 0.8);
-    particle.setDepth(9);
 
+    if (circlePool) {
+      const particle = circlePool.acquire();
+      particle.setPosition(x, y);
+      particle.setRadius(3);
+      particle.setFillStyle(color, 0.8);
+      particle.setAlpha(0.8);
+      particle.setScale(1);
+      particle.setDepth(9);
+
+      scene.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        scaleX: 0,
+        scaleY: 0,
+        alpha: 0,
+        duration: 400,
+        ease: 'Power2',
+        onComplete: () => circlePool?.release(particle),
+      });
+    } else {
+      const particle = scene.add.circle(x, y, 3, color, 0.8);
+      particle.setDepth(9);
+
+      scene.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        scaleX: 0,
+        scaleY: 0,
+        alpha: 0,
+        duration: 400,
+        ease: 'Power2',
+        onComplete: () => particle.destroy(),
+      });
+    }
+  }
+}
+
+export function showDeathParticles(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  color = 0xffffff,
+  count = 8,
+): void {
+  const emitter = scene.add.particles(x, y, 'particle_dot', {
+    emitting: false,
+    speed: { min: 30, max: 80 },
+    lifespan: 400,
+    blendMode: Phaser.BlendModes.ADD,
+    alpha: { start: 0.8, end: 0 },
+    scale: { start: 0.5, end: 0.1 },
+    tint: color,
+  });
+  emitter.setDepth(9);
+  emitter.explode(count);
+  emitter.once('complete', () => emitter.destroy());
+}
+
+// ===== ZONE ABILITY VFX =====
+
+export function showZoneEffect(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  radius: number,
+  governor: string,
+  duration: number,
+  quality: 'low' | 'med' | 'high' = 'high',
+): void {
+  const isFireLava = governor === 'fire';
+  const color = isFireLava ? 0xff4400 : 0x44ddff;
+  const fillAlpha = 0.12;
+  const durationMs = duration * 1000;
+
+  // Base circle (all quality levels)
+  const zone = scene.add.circle(x, y, radius, color, fillAlpha);
+  zone.setDepth(3);
+
+  if (quality === 'low') {
+    // Low quality: flat circle, fade out at end
     scene.tweens.add({
-      targets: particle,
-      x: x + Math.cos(angle) * dist,
-      y: y + Math.sin(angle) * dist,
-      scaleX: 0,
-      scaleY: 0,
+      targets: zone,
       alpha: 0,
-      duration: 400,
-      ease: 'Power2',
-      onComplete: () => particle.destroy(),
+      duration: durationMs,
+      onComplete: () => zone.destroy(),
     });
+    return;
+  }
+
+  // Med+: pulsing alpha
+  const strokeColor = isFireLava ? 0xff6600 : 0x88ddff;
+  const ring = scene.add.circle(x, y, radius, undefined, 0);
+  ring.setStrokeStyle(2, strokeColor, 0.4);
+  ring.setDepth(3);
+
+  // Pulse tween on zone fill
+  scene.tweens.add({
+    targets: zone,
+    alpha: { from: fillAlpha, to: fillAlpha * 2.5 },
+    duration: isFireLava ? 400 : 800,
+    yoyo: true,
+    repeat: Math.floor(durationMs / (isFireLava ? 800 : 1600)) - 1,
+    onComplete: () => zone.destroy(),
+  });
+
+  // Ring pulse
+  scene.tweens.add({
+    targets: ring,
+    alpha: 0,
+    duration: durationMs,
+    onUpdate: () => {
+      const pulse = 0.2 + 0.2 * Math.sin(scene.time.now / (isFireLava ? 200 : 400));
+      ring.setStrokeStyle(2, strokeColor, pulse);
+    },
+    onComplete: () => ring.destroy(),
+  });
+
+  // High: add particles
+  if (quality === 'high') {
+    const particleCount = 6;
+    const interval = durationMs / 4;
+    for (let burst = 0; burst < 4; burst++) {
+      scene.time.delayedCall(burst * interval, () => {
+        for (let i = 0; i < particleCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Math.random() * radius * 0.8;
+          const px = x + Math.cos(angle) * dist;
+          const py = y + Math.sin(angle) * dist;
+          const dot = scene.add.circle(px, py, 1.5, color, 0.6);
+          dot.setDepth(3);
+          scene.tweens.add({
+            targets: dot,
+            y: isFireLava ? py - 10 - Math.random() * 8 : py + 3,
+            x: isFireLava ? px : px + (Math.random() - 0.5) * 6,
+            alpha: 0,
+            duration: 600 + Math.random() * 400,
+            onComplete: () => dot.destroy(),
+          });
+        }
+      });
+    }
   }
 }

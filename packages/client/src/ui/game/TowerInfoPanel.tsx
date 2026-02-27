@@ -19,9 +19,12 @@ interface TowerInfoPanelProps {
   onSetTargeting?: (towerId: string, mode: string) => void;
   onQueueUpgrade?: (towerId: string) => void;
   onCancelQueue?: (towerId: string) => void;
+  onGiftTower?: (towerId: string, targetPlayerId: string) => void;
+  onRequestFunding?: (towerId: string) => void;
+  onContributeFunding?: (towerId: string, amount: number) => void;
 }
 
-export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting, onQueueUpgrade, onCancelQueue }: TowerInfoPanelProps) {
+export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting, onQueueUpgrade, onCancelQueue, onGiftTower, onRequestFunding, onContributeFunding }: TowerInfoPanelProps) {
   const selectedTowerId = useUIStore((s) => s.selectedTowerId);
   const snapshot = useGameStore((s) => s.snapshot);
   const selectTower = useUIStore((s) => s.selectTower);
@@ -204,6 +207,94 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting, on
     </div>
   ) : null;
 
+  const otherPlayers = snapshot ? Object.values(snapshot.players).filter(p => p.playerId !== playerId) : [];
+  const canGift = isOwner && onGiftTower && otherPlayers.length > 0 && (tower.giftCooldown ?? 0) <= 0;
+  const giftSection = canGift ? (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ fontSize: 9, color: '#8888aa', textTransform: 'uppercase', marginBottom: 3 }}>Gift Tower</div>
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+        {otherPlayers.map((p) => (
+          <button
+            key={p.playerId}
+            onClick={() => onGiftTower!(selectedTowerId, p.playerId)}
+            style={{
+              flex: 1, padding: '3px 6px', fontSize: 10,
+              background: 'rgba(68, 255, 136, 0.1)',
+              border: '1px solid #44ff88',
+              color: '#44ff88',
+              borderRadius: 3, cursor: 'pointer',
+              minWidth: 60,
+            }}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : (tower.giftCooldown ?? 0) > 0 && isOwner && onGiftTower ? (
+    <div style={{ fontSize: 10, color: '#8888aa', marginBottom: 6 }}>
+      Gift cooldown: {Math.ceil(tower.giftCooldown!)}s
+    </div>
+  ) : null;
+
+  // Co-funding section
+  const hasFundingGoal = (tower.fundingGoal ?? 0) > 0;
+  const fundingPct = hasFundingGoal ? Math.min(1, (tower.fundingCurrent ?? 0) / tower.fundingGoal!) : 0;
+  const fundingSection = hasFundingGoal ? (
+    <div style={{ marginBottom: 6, padding: '4px 6px', background: 'rgba(255, 221, 68, 0.08)', borderRadius: 4, border: '1px solid #ffdd4433' }}>
+      <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#ffdd44', marginBottom: 3 }}>Funding for Upgrade</div>
+      <div style={{ width: '100%', height: 8, background: 'rgba(255, 255, 255, 0.08)', borderRadius: 4, overflow: 'hidden', marginBottom: 4 }}>
+        <div style={{
+          width: `${fundingPct * 100}%`,
+          height: '100%',
+          background: 'linear-gradient(90deg, #ffdd44, #ffaa22)',
+          borderRadius: 4,
+          transition: 'width 0.3s ease',
+        }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#e0e0f0' }}>
+        <span>{tower.fundingCurrent ?? 0} / {tower.fundingGoal}g</span>
+        <span style={{ color: '#8888aa' }}>{Math.round(fundingPct * 100)}%</span>
+      </div>
+      {!isOwner && onContributeFunding && player && player.money > 0 && (
+        <div style={{ display: 'flex', gap: 3, marginTop: 4 }}>
+          {[10, 25, 50].map((amt) => {
+            const contribution = Math.min(amt, player.money, (tower.fundingGoal ?? 0) - (tower.fundingCurrent ?? 0));
+            if (contribution <= 0) return null;
+            return (
+              <button
+                key={amt}
+                onClick={() => onContributeFunding(selectedTowerId, contribution)}
+                style={{
+                  flex: 1, padding: '3px 4px', fontSize: 10,
+                  background: 'rgba(255, 221, 68, 0.1)',
+                  border: '1px solid #ffdd44',
+                  color: '#ffdd44',
+                  borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                +{contribution}g
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  ) : isOwner && onRequestFunding && tower.level < 4 && !hasFundingGoal ? (
+    <button
+      onClick={() => onRequestFunding(selectedTowerId)}
+      style={{
+        width: '100%', padding: '3px 6px', fontSize: 10, marginBottom: 6,
+        background: 'rgba(255, 221, 68, 0.1)',
+        border: '1px solid #ffdd44',
+        color: '#ffdd44',
+        borderRadius: 3, cursor: 'pointer',
+      }}
+    >
+      Request Funding ({upgradeCost}g)
+    </button>
+  ) : null;
+
   const actionButtons = isOwner && onUpgrade && onSell ? (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {hasQueuedUpgrade && (
@@ -298,6 +389,8 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting, on
 
           {/* Pinned action buttons — always visible */}
           <div style={{ flexShrink: 0, paddingTop: 8, borderTop: '1px solid #333366' }}>
+            {fundingSection}
+            {giftSection}
             {actionButtons}
           </div>
         </div>
@@ -328,6 +421,8 @@ export function TowerInfoPanel({ playerId, onUpgrade, onSell, onSetTargeting, on
       {effectivenessSection}
       {targetingSection}
       {upgradePreviewSection}
+      {fundingSection}
+      {giftSection}
       {actionButtons}
       <button
         onClick={() => selectTower(null)}

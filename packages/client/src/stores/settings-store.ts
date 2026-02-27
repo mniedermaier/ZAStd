@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 
+type GraphicsQuality = 'low' | 'med' | 'high';
+
+export interface Blueprint {
+  id: string;
+  name: string;
+  towers: Array<{ relX: number; relY: number; towerType: string }>;
+}
+
 interface SettingsStore {
   masterVolume: number;
   sfxVolume: number;
@@ -8,6 +16,10 @@ interface SettingsStore {
   showHelp: boolean;
   isPaused: boolean;
   gameSpeed: number;
+  graphicsQuality: GraphicsQuality;
+  screenShake: boolean;
+  blueprints: Blueprint[];
+  blueprintQueue: Array<{ relX: number; relY: number; towerType: string }> | null;
 
   setMasterVolume: (v: number) => void;
   setSfxVolume: (v: number) => void;
@@ -17,6 +29,13 @@ interface SettingsStore {
   setIsPaused: (paused: boolean) => void;
   togglePause: () => void;
   setGameSpeed: (speed: number) => void;
+  setGraphicsQuality: (q: GraphicsQuality) => void;
+  setScreenShake: (on: boolean) => void;
+  saveBlueprint: (name: string, towers: Array<{ relX: number; relY: number; towerType: string }>) => void;
+  deleteBlueprint: (id: string) => void;
+  loadBlueprint: (id: string) => void;
+  clearBlueprintQueue: () => void;
+  popBlueprintQueue: () => { relX: number; relY: number; towerType: string } | null;
 }
 
 function loadNumber(key: string, fallback: number): number {
@@ -33,8 +52,27 @@ function loadBool(key: string, fallback: boolean): boolean {
   } catch { return fallback; }
 }
 
-function persist(key: string, value: number | boolean) {
+function loadString(key: string, fallback: string): string {
+  try {
+    const v = localStorage.getItem(key);
+    return v !== null ? v : fallback;
+  } catch { return fallback; }
+}
+
+function persist(key: string, value: number | boolean | string) {
   try { localStorage.setItem(key, String(value)); } catch {}
+}
+
+function loadBlueprints(): Blueprint[] {
+  try {
+    const raw = localStorage.getItem('zastd:blueprints');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function saveBlueprints(blueprints: Blueprint[]) {
+  try { localStorage.setItem('zastd:blueprints', JSON.stringify(blueprints)); } catch {}
 }
 
 // Colorblind-safe palette: replaces red/green distinctions with blue/orange
@@ -62,7 +100,7 @@ export function getCBColor(key: keyof typeof CB_COLORS, colorblind: boolean): st
   return colorblind ? CB_COLORS[key].cb : CB_COLORS[key].normal;
 }
 
-export const useSettingsStore = create<SettingsStore>((set) => ({
+export const useSettingsStore = create<SettingsStore>((set, get) => ({
   masterVolume: loadNumber('settings:masterVolume', 0.7),
   sfxVolume: loadNumber('settings:sfxVolume', 0.8),
   musicVolume: loadNumber('settings:musicVolume', 0.4),
@@ -70,6 +108,10 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   showHelp: false,
   isPaused: false,
   gameSpeed: loadNumber('settings:gameSpeed', 1),
+  graphicsQuality: loadString('settings:graphicsQuality', 'high') as GraphicsQuality,
+  screenShake: loadBool('settings:screenShake', true),
+  blueprints: loadBlueprints(),
+  blueprintQueue: null,
 
   setMasterVolume: (v) => { persist('settings:masterVolume', v); set({ masterVolume: v }); },
   setSfxVolume: (v) => { persist('settings:sfxVolume', v); set({ sfxVolume: v }); },
@@ -79,4 +121,32 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   setIsPaused: (paused) => set({ isPaused: paused }),
   togglePause: () => set((s) => ({ isPaused: !s.isPaused })),
   setGameSpeed: (speed) => { persist('settings:gameSpeed', speed); set({ gameSpeed: speed }); },
+  setGraphicsQuality: (q) => { persist('settings:graphicsQuality', q); set({ graphicsQuality: q }); },
+  setScreenShake: (on) => { persist('settings:screenShake', on); set({ screenShake: on }); },
+  saveBlueprint: (name, towers) => {
+    const bp: Blueprint = { id: crypto.randomUUID(), name, towers };
+    const updated = [...get().blueprints, bp];
+    saveBlueprints(updated);
+    set({ blueprints: updated });
+  },
+  deleteBlueprint: (id) => {
+    const updated = get().blueprints.filter(b => b.id !== id);
+    saveBlueprints(updated);
+    set({ blueprints: updated });
+  },
+  loadBlueprint: (id) => {
+    const bp = get().blueprints.find(b => b.id === id);
+    if (bp) set({ blueprintQueue: [...bp.towers] });
+  },
+  clearBlueprintQueue: () => set({ blueprintQueue: null }),
+  popBlueprintQueue: () => {
+    const queue = get().blueprintQueue;
+    if (!queue || queue.length === 0) {
+      set({ blueprintQueue: null });
+      return null;
+    }
+    const [next, ...rest] = queue;
+    set({ blueprintQueue: rest.length > 0 ? rest : null });
+    return next;
+  },
 }));

@@ -19,6 +19,7 @@ import { OrientationBanner } from './OrientationBanner';
 import { AbilityBar } from './AbilityBar';
 import { useSettingsStore } from '../../stores/settings-store';
 import { useUIStore } from '../../stores/ui-store';
+import { useGameStore } from '../../stores/game-store';
 
 import { MobileToolbar, MobilePanel } from './MobileToolbar';
 import { MobileDrawer } from './MobileDrawer';
@@ -40,6 +41,9 @@ interface GamePageProps {
   onQueueUpgrade?: (towerId: string) => void;
   onCancelQueue?: (towerId: string) => void;
   onSendGold?: (targetPlayerId: string, amount: number) => void;
+  onGiftTower?: (towerId: string, targetPlayerId: string) => void;
+  onRequestFunding?: (towerId: string) => void;
+  onContributeFunding?: (towerId: string, amount: number) => void;
   showChat?: boolean;
   isSolo?: boolean;
   isSpectating?: boolean;
@@ -61,7 +65,7 @@ function useIsMobile() {
 
 export function GamePage({
   playerId, playerName, onPlaceTower, onUpgradeTower, onSellTower, onSetTargeting, onStartWave, onBuyTech, onUseAbility, onQuit,
-  onSendChat, onPing, onSendCreeps, onQueueUpgrade, onCancelQueue, onSendGold, showChat, isSolo, isSpectating,
+  onSendChat, onPing, onSendCreeps, onQueueUpgrade, onCancelQueue, onSendGold, onGiftTower, onRequestFunding, onContributeFunding, showChat, isSolo, isSpectating,
 }: GamePageProps) {
   const isPaused = useSettingsStore((s) => s.isPaused);
   const showHelp = useSettingsStore((s) => s.showHelp);
@@ -208,18 +212,8 @@ export function GamePage({
         <AbilityBar playerId={playerId} onUseAbility={onUseAbility} />
       )}
 
-      {/* Spectating banner */}
-      {isSpectating && (
-        <div style={{
-          position: 'absolute', top: 'max(40px, env(safe-area-inset-top, 0px))', left: '50%',
-          transform: 'translateX(-50%)', zIndex: 30,
-          padding: '4px 16px', background: 'rgba(10, 10, 26, 0.9)',
-          border: '1px solid #ffaa44', borderRadius: 6,
-          color: '#ffaa44', fontSize: 13, fontWeight: 700, letterSpacing: 1,
-        }}>
-          SPECTATING
-        </div>
-      )}
+      {/* Spectator bar */}
+      {isSpectating && <SpectatorBar />}
 
       {/* Bottom-center: tower build bar */}
       {!isSpectating && <TowerBuildBar playerId={playerId} />}
@@ -232,6 +226,9 @@ export function GamePage({
         onSetTargeting={isSpectating ? undefined : onSetTargeting}
         onQueueUpgrade={onQueueUpgrade}
         onCancelQueue={onCancelQueue}
+        onGiftTower={isSpectating ? undefined : onGiftTower}
+        onRequestFunding={isSpectating ? undefined : onRequestFunding}
+        onContributeFunding={isSpectating ? undefined : onContributeFunding}
       />
 
       {/* Centered overlays */}
@@ -249,6 +246,57 @@ export function GamePage({
       )}
       <MobileTutorial />
       <OrientationBanner />
+    </div>
+  );
+}
+
+function SpectatorBar() {
+  const snapshot = useGameStore((s) => s.snapshot);
+  const spectatorTarget = useUIStore((s) => s.spectatorTarget);
+  const spectatorFreeCamera = useUIStore((s) => s.spectatorFreeCamera);
+  const setSpectatorTarget = useUIStore((s) => s.setSpectatorTarget);
+  const setSpectatorFreeCamera = useUIStore((s) => s.setSpectatorFreeCamera);
+
+  const players = snapshot ? Object.values(snapshot.players) : [];
+
+  const btnStyle = (active: boolean): React.CSSProperties => ({
+    padding: '4px 10px',
+    fontSize: 11,
+    fontWeight: active ? 700 : 400,
+    background: active ? 'rgba(255, 170, 68, 0.2)' : 'rgba(10, 10, 26, 0.7)',
+    border: active ? '1px solid #ffaa44' : '1px solid #333366',
+    color: active ? '#ffaa44' : '#8888aa',
+    borderRadius: 4,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  });
+
+  return (
+    <div style={{
+      position: 'absolute', top: 'max(40px, env(safe-area-inset-top, 0px))', left: '50%',
+      transform: 'translateX(-50%)', zIndex: 30,
+      display: 'flex', gap: 4, alignItems: 'center',
+      padding: '4px 8px', background: 'rgba(10, 10, 26, 0.9)',
+      border: '1px solid #ffaa44', borderRadius: 6,
+    }}>
+      <span style={{ color: '#ffaa44', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginRight: 4 }}>
+        SPECTATING
+      </span>
+      <button
+        onClick={() => setSpectatorFreeCamera(true)}
+        style={btnStyle(spectatorFreeCamera)}
+      >
+        Free Cam
+      </button>
+      {players.map((p) => (
+        <button
+          key={p.playerId}
+          onClick={() => setSpectatorTarget(p.playerId)}
+          style={btnStyle(!spectatorFreeCamera && spectatorTarget === p.playerId)}
+        >
+          {p.name}
+        </button>
+      ))}
     </div>
   );
 }

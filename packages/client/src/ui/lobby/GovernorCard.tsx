@@ -36,11 +36,27 @@ export function GovernorCard({ element, selected, onSelect }: GovernorCardProps)
          element === 'poison' ? '☠️' : element === 'death' ? '💀' : element === 'nature' ? '🌿' :
          element === 'arcane' ? '✨' : '✝️'}
       </span>
-      <span style={{ fontWeight: 700, fontSize: 13 }}>{gov.name}</span>
+      <span style={{ fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {gov.name}
+        {tier && (
+          <span style={{
+            fontSize: 8,
+            color: tier.color,
+            fontWeight: 700,
+            padding: '1px 4px',
+            borderRadius: 3,
+            background: `${tier.color}15`,
+            border: `1px solid ${tier.color}33`,
+            lineHeight: 1.2,
+          }}>
+            {tier.name}
+          </span>
+        )}
+      </span>
       <span style={{ fontSize: 10, color: '#8888aa', textAlign: 'center' }}>{gov.passiveBonus}</span>
-      {tier && (
-        <span style={{ fontSize: 9, color: tier.color, fontWeight: 600 }}>
-          {tier.name} ({mastery!.gamesWon}W/{mastery!.gamesPlayed}G)
+      {mastery && mastery.gamesPlayed > 0 && (
+        <span style={{ fontSize: 9, color: '#8888aa' }}>
+          {mastery.gamesWon}W / {mastery.gamesPlayed}G
         </span>
       )}
     </button>

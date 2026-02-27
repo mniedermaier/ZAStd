@@ -1,4 +1,4 @@
-import { GameStateSnapshot, GamePhase, TowerType, EnemyType, TargetingMode } from './types';
+import { GameStateSnapshot, GamePhase, TowerType, EnemyType, TargetingMode, EliteAffix, EnemyTrait } from './types';
 import { GameState } from './game-state';
 import { TowerInstance, TOWER_DEFINITIONS } from './tower';
 import { EnemyInstance, ENEMY_DEFINITIONS } from './enemy';
@@ -56,6 +56,18 @@ export function gameStateFromSnapshot(snapshot: GameStateSnapshot): GameState {
     tower.currentTarget = (ts.currentTarget && snapshot.enemies[ts.currentTarget]) ? ts.currentTarget : null;
     // Restore targeting mode
     if (ts.targetingMode) tower.targetingMode = ts.targetingMode as TargetingMode;
+    // Restore gift cooldown
+    if (ts.giftCooldown) tower.giftCooldown = ts.giftCooldown;
+    if (ts.autoUpgrade) tower.autoUpgrade = true;
+    if (ts.fundingGoal) {
+      tower.fundingGoal = ts.fundingGoal;
+      tower.fundingCurrent = ts.fundingCurrent ?? 0;
+      if (ts.fundingContributors) {
+        for (const [pid, amt] of Object.entries(ts.fundingContributors)) {
+          tower.fundingContributors.set(pid, amt as number);
+        }
+      }
+    }
     gs.towers.set(tid, tower);
 
     // Mark cell as blocked in occupancy grid (without recalculating path each time)
@@ -103,6 +115,19 @@ export function gameStateFromSnapshot(snapshot: GameStateSnapshot): GameState {
     enemy.armorDebuffEndTime = es.armorDebuffEndTime ?? 0;
     enemy.isSentCreep = es.isSentCreep ?? false;
     enemy.sentByPlayerId = es.sentByPlayerId ?? null;
+    // Trait fields
+    if (es.traits && es.traits.length > 0) {
+      enemy.traits = es.traits as EnemyTrait[];
+    }
+    if (es.dodgeCooldownEnd) enemy.dodgeCooldownEnd = es.dodgeCooldownEnd;
+    if (es.burrowCooldownEnd) enemy.burrowCooldownEnd = es.burrowCooldownEnd;
+    // Elite fields
+    if (es.eliteAffix) {
+      enemy.eliteAffix = es.eliteAffix as EliteAffix;
+      enemy.shieldHealth = es.shieldHealth ?? 0;
+      enemy.shieldMaxHealth = es.shieldMaxHealth ?? 0;
+      enemy.phaseActive = es.phaseActive ?? false;
+    }
     gs.enemies.set(eid, enemy);
   }
 

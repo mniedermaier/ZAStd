@@ -5,9 +5,9 @@ export type { WaveMutatorType, WaveMutatorDefinition } from './types';
 export type { SynergyDefinition } from './constants';
 
 // Game modules
-export { TOWER_DEFINITIONS, TowerInstance, getUpgradeCost, createProjectile } from './tower';
+export { TOWER_DEFINITIONS, TowerInstance, getUpgradeCost, createProjectile, estimateTowerDPS, towerEfficiency } from './tower';
 export type { Projectile } from './tower';
-export { ENEMY_DEFINITIONS, EnemyInstance, Wave, generateWave, createEnemy, getWavePreview } from './enemy';
+export { ENEMY_DEFINITIONS, EnemyInstance, Wave, generateWave, createEnemy, getWavePreview, isEliteWave, getEnemyTraits } from './enemy';
 export { Path, OccupancyGrid, calculateDistance, moveTowards, updateEnemyPosition, getFlyingPath } from './pathfinding';
 export { Player } from './player';
 export { TECH_UPGRADES, calculateInterest, shouldAwardLumber, getLumberAward } from './economy';
@@ -21,4 +21,5 @@ export type { DailyChallengeConfig, WeeklyChallengeConfig } from './daily-challe
 export { ReplayRecorder } from './replay';
 export type { ReplayData, ReplayFrame } from './replay';
 export type { CreepSendDefinition } from './constants';
-export { CREEP_SEND_DEFINITIONS, TUTORIAL_WAVES, TUTORIAL_HINTS, VOTE_TIMEOUT } from './constants';
+export { CREEP_SEND_DEFINITIONS, TUTORIAL_WAVES, TUTORIAL_HINTS, VOTE_TIMEOUT, ZONE_DEFINITIONS } from './constants';
+export type { ActiveZone, EnemyTrait } from './types';

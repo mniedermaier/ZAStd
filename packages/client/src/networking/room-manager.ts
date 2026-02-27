@@ -461,6 +461,15 @@ export class RoomManager {
     });
   }
 
+  giftTower(towerId: string, targetPlayerId: string): void {
+    this._dispatchAction({
+      type: 'gift_tower',
+      playerId: this.playerId,
+      towerId,
+      targetPlayerId,
+    });
+  }
+
   queueUpgrade(towerId: string): void {
     this._dispatchAction({
       type: 'queue_upgrade',
@@ -518,6 +527,23 @@ export class RoomManager {
       type: 'join_game_request',
       playerId: this.playerId,
       governor,
+    });
+  }
+
+  requestFunding(towerId: string): void {
+    this._dispatchAction({
+      type: 'request_funding',
+      playerId: this.playerId,
+      towerId,
+    });
+  }
+
+  contributeFunding(towerId: string, amount: number): void {
+    this._dispatchAction({
+      type: 'contribute_funding',
+      playerId: this.playerId,
+      towerId,
+      amount,
     });
   }
 

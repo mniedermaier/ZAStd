@@ -1,15 +1,16 @@
 import Phaser from 'phaser';
 import type { GameStateSnapshot, TowerSnapshot, EnemySnapshot, ProjectileSnapshot } from '@zastd/engine';
-import { TOWER_DEFINITIONS, TowerType, GOVERNORS, ABILITY_DEFINITIONS, OccupancyGrid } from '@zastd/engine';
+import { TOWER_DEFINITIONS, TowerType, GOVERNORS, ABILITY_DEFINITIONS, OccupancyGrid, ELITE_AFFIX_DEFINITIONS, estimateTowerDPS, towerEfficiency } from '@zastd/engine';
 import { useGameStore } from '../../stores/game-store';
 import { useUIStore } from '../../stores/ui-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import {
-  showImpact, showChainLightning, showDeathBurst, showSplitterSplit, showUpgradeFlash,
+  showImpact, showChainLightning, showDeathBurst, showDeathParticles, showSplitterSplit, showUpgradeFlash,
   showMeteorStrike, showBlizzardEffect, showChainStorm, showPlagueCloud,
   showReapEffect, showOvergrowthEffect, showManaBomb, showDivineIntervention,
+  initImpactPool, destroyImpactPool, showZoneEffect,
 } from '../effects/ImpactEffect';
-import { showDamageNumber, showGoldGain } from '../effects/DamageNumber';
+import { showDamageNumber, showGoldGain, initDamageNumberPool, destroyDamageNumberPool } from '../effects/DamageNumber';
 import {
   playTowerAttack, playEnemyDeath,
   playAbilityFire, playAbilityIce, playAbilityThunder, playAbilityPoison,
@@ -83,6 +84,14 @@ function getEnemyColor(enemyType: string): number {
   };
   return colors[enemyType] ?? 0xcc4444;
 }
+
+// Elite affix colors
+const ELITE_AFFIX_COLORS: Record<string, number> = {
+  deflector: 0x44bbff,
+  shielded: 0x6688ff,
+  juggernaut: 0xff8844,
+  phase_shifter: 0xcc44ff,
+};
 
 const STAR_COUNT = 80;
 const STAR_COLORS = [0x44bbff, 0x44ff88, 0xff4466, 0xaa44ff];
@@ -189,30 +198,100 @@ export class GameScene extends Phaser.Scene {
   private pingLabels: Phaser.GameObjects.Text[] = [];
   private prevPingCount = 0;
 
+  // --- Bloom glow pool ---
+  private bloomPool: Phaser.GameObjects.Image[] = [];
+  private bloomActiveCount = 0;
+
+  // --- Vignette & Nebulae ---
+  private vignetteSprite!: Phaser.GameObjects.Image;
+  private nebulae: Phaser.GameObjects.Image[] = [];
+  private nebulaeDriftX: number[] = [];
+  private nebulaeDriftY: number[] = [];
+  private nebulaePulsePhase: number[] = [];
+  private nebulaePulsePeriod: number[] = [];
+  private nebulaeBaseAlpha: number[] = [];
+
+  // --- Tower particle emitters ---
+  private towerEmitters = new Map<string, Phaser.GameObjects.Particles.ParticleEmitter>();
+
   // --- Synergy detection ---
   private prevTowerSynergies = new Map<string, string[]>();
 
+  // --- Cached tower position map for synergy rendering ---
+  private _towerPosMap = new Map<string, TowerSnapshot>();
+
+  // --- Mobile gestures ---
+  private lastTapTime = 0;
+  private lastTapX = 0;
+  private lastTapY = 0;
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private longPressFired = false;
+
+  // --- Path energy pulses (Feature 8) ---
+  private pathEnergyPulses: { progress: number; color: number }[] = [];
+
+  // --- Wave clear celebration (Feature 9) ---
+  private prevWaveCompleted = false;
+
+  // --- Low-lives alarm (Feature 10) ---
+  private lowLivesOverlay: Phaser.GameObjects.Rectangle | null = null;
+
+  // --- Ghost DPS/name text (Features 11 & 12) ---
+  private ghostDpsText: Phaser.GameObjects.Text | null = null;
+  private ghostNameText: Phaser.GameObjects.Text | null = null;
+
+  // --- Previous cursor style (Feature 12) ---
+  private _prevCursorStyle = 'default';
+
+  // --- Previous active zones for zone effect tracking (Feature 14) ---
+  private prevActiveZoneIds = new Set<string>();
+
   constructor() {
     super({ key: 'GameScene' });
+  }
+
+  /** Camera shake helper that checks the screenShake setting before shaking. */
+  private shake(duration: number, intensity: number): void {
+    if (!useSettingsStore.getState().screenShake) return;
+    this.cameras.main.shake(duration, intensity);
   }
 
   create() {
     // Layers ordered by depth
     this.starGraphics = this.add.graphics().setDepth(-1);
     this.gridGraphics = this.add.graphics();
-    this.pathFlowGraphics = this.add.graphics().setDepth(0.3);
+    this.pathFlowGraphics = this.add.graphics().setDepth(0.3).setBlendMode(Phaser.BlendModes.ADD);
     this.markerGraphics = this.add.graphics().setDepth(0.5);
-    this.pathGraphics = this.add.graphics().setDepth(1);
-    this.towerGlowGraphics = this.add.graphics().setDepth(1.5);
+    this.pathGraphics = this.add.graphics().setDepth(1).setBlendMode(Phaser.BlendModes.ADD);
+    this.towerGlowGraphics = this.add.graphics().setDepth(1.5).setBlendMode(Phaser.BlendModes.ADD);
     // Tower containers at depth 2 (set on creation)
     // Enemy containers at depth 3 (set on creation)
     this.effectsGraphics = this.add.graphics().setDepth(3.5);
-    this.trailGraphics = this.add.graphics().setDepth(4);
+    this.trailGraphics = this.add.graphics().setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
     // Projectiles at depth 4 (set on creation)
     this.ghostGraphics = this.add.graphics().setDepth(5);
     this.selectionGraphics = this.add.graphics().setDepth(6);
     // Effects (impacts, lightning, numbers) at depth 8-10 (set in effect functions)
     this.pingGraphics = this.add.graphics().setDepth(15);
+
+    // Bloom glow pool: 150 pre-allocated sprites, hidden by default
+    for (let i = 0; i < 150; i++) {
+      const img = this.add.image(0, 0, 'glow_soft');
+      img.setBlendMode(Phaser.BlendModes.ADD);
+      img.setDepth(1.8);
+      img.setVisible(false);
+      this.bloomPool.push(img);
+    }
+
+    // Initialize effect object pools (damage numbers + impact circles)
+    initDamageNumberPool(this);
+    initImpactPool(this);
+
+    // Vignette overlay
+    this.vignetteSprite = this.add.image(0, 0, 'vignette_radial');
+    this.vignetteSprite.setBlendMode(Phaser.BlendModes.MULTIPLY);
+    this.vignetteSprite.setDepth(20);
+    this.vignetteSprite.setAlpha(0.6);
 
     // Cache keyboard keys
     if (this.input.keyboard) {
@@ -247,10 +326,82 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this.input.pointer2.isDown) return;
+
+      // --- Mobile gestures: double-tap and long-press ---
+      const now = Date.now();
+      this.longPressFired = false;
+
+      // Clear any previous long-press timer
+      if (this.longPressTimer !== null) {
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
+      }
+
+      // Double-tap detection (< 300ms between taps, within 30px)
+      const dx = pointer.x - this.lastTapX;
+      const dy = pointer.y - this.lastTapY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (now - this.lastTapTime < 300 && dist < 30) {
+        this.lastTapTime = 0; // reset so triple-tap doesn't re-fire
+        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        const cellX = Math.floor(worldPoint.x / CELL_SIZE);
+        const cellY = Math.floor(worldPoint.y / CELL_SIZE);
+        const snapshot = useGameStore.getState().snapshot;
+        if (snapshot) {
+          let foundTower = false;
+          for (const [id, ts] of Object.entries(snapshot.towers)) {
+            if (ts.x === cellX && ts.y === cellY) {
+              useUIStore.getState().selectTower(id);
+              foundTower = true;
+              break;
+            }
+          }
+          if (!foundTower) {
+            // Center camera on tapped cell
+            const cam = this.cameras.main;
+            cam.centerOn(cellX * CELL_SIZE + CELL_SIZE / 2, cellY * CELL_SIZE + CELL_SIZE / 2);
+          }
+        }
+        return;
+      }
+      this.lastTapTime = now;
+      this.lastTapX = pointer.x;
+      this.lastTapY = pointer.y;
+
+      // Long-press detection (500ms hold)
+      const lpX = pointer.x;
+      const lpY = pointer.y;
+      this.longPressTimer = setTimeout(() => {
+        this.longPressTimer = null;
+        this.longPressFired = true;
+        const worldPoint = this.cameras.main.getWorldPoint(lpX, lpY);
+        const cellX = Math.floor(worldPoint.x / CELL_SIZE);
+        const cellY = Math.floor(worldPoint.y / CELL_SIZE);
+        const snapshot = useGameStore.getState().snapshot;
+        if (snapshot) {
+          for (const [id, ts] of Object.entries(snapshot.towers)) {
+            if (ts.x === cellX && ts.y === cellY) {
+              useUIStore.getState().selectTower(id);
+              break;
+            }
+          }
+        }
+      }, 500);
+
       this.handleClick(pointer);
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      // Cancel long-press if pointer moved significantly
+      if (this.longPressTimer !== null) {
+        const mdx = pointer.x - this.lastTapX;
+        const mdy = pointer.y - this.lastTapY;
+        if (Math.sqrt(mdx * mdx + mdy * mdy) > 10) {
+          clearTimeout(this.longPressTimer);
+          this.longPressTimer = null;
+        }
+      }
+
       const p1 = this.input.pointer1;
       const p2 = this.input.pointer2;
 
@@ -295,6 +446,11 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerup', () => {
       this.cameraControls.dragging = false;
       this.pinchState.active = false;
+      // Cancel long-press timer on pointer up
+      if (this.longPressTimer !== null) {
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
+      }
     });
 
     this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _dx: number, _dy: number, dz: number) => {
@@ -315,8 +471,9 @@ export class GameScene extends Phaser.Scene {
         const fitZoom = Math.min(cam.width / (mw * CELL_SIZE), cam.height / (mh * CELL_SIZE)) * 0.9;
         cam.setZoom(Phaser.Math.Clamp(fitZoom, 0.3, 3));
         cam.centerOn((mw * CELL_SIZE) / 2, (mh * CELL_SIZE) / 2);
-        // Re-initialize stars for new map dimensions
+        // Re-initialize stars and nebulae for new map dimensions
         this.initStars(this.lastSnapshot);
+        this.initNebulae(this.lastSnapshot);
       }
     });
   }
@@ -349,6 +506,25 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Spectator camera follow: center on average position of target player's towers
+    const uiState = useUIStore.getState();
+    if (uiState.spectatorTarget && !uiState.spectatorFreeCamera) {
+      const targetId = uiState.spectatorTarget;
+      const playerTowers = Object.values(snapshot.towers).filter(t => t.ownerId === targetId);
+      if (playerTowers.length > 0) {
+        let avgX = 0, avgY = 0;
+        for (const t of playerTowers) { avgX += t.x; avgY += t.y; }
+        avgX = (avgX / playerTowers.length) * CELL_SIZE + CELL_SIZE / 2;
+        avgY = (avgY / playerTowers.length) * CELL_SIZE + CELL_SIZE / 2;
+        const camCX = cam.scrollX + cam.width / (2 * cam.zoom);
+        const camCY = cam.scrollY + cam.height / (2 * cam.zoom);
+        const sdx = avgX - camCX;
+        const sdy = avgY - camCY;
+        cam.scrollX += sdx * 0.05;
+        cam.scrollY += sdy * 0.05;
+      }
+    }
+
     // FPS counter — throttle setText (expensive texture churn) but reposition every frame
     this.fpsUpdateTimer += _delta;
     if (this.fpsUpdateTimer >= 500) {
@@ -364,12 +540,15 @@ export class GameScene extends Phaser.Scene {
     // Initialize stars once when map size is known
     if (!this.starsInitialized) {
       this.initStars(snapshot);
+      this.initNebulae(snapshot);
       this.starsInitialized = true;
     }
     this.updateStars(_delta);
 
     // Render pings
     this.updatePings();
+
+    const quality = useSettingsStore.getState().graphicsQuality;
 
     // Only redraw grid/path if snapshot changed
     if (snapshot !== this.lastSnapshot) {
@@ -379,6 +558,7 @@ export class GameScene extends Phaser.Scene {
       }
       this.detectEvents(snapshot);
       this.reconcileTowers(snapshot);
+      if (quality !== 'low') this.reconcileTowerEmitters(snapshot);
       this.reconcileProjectiles(snapshot);
       this.lastSnapshot = snapshot;
     }
@@ -405,14 +585,170 @@ export class GameScene extends Phaser.Scene {
     this.drawPathFlow(snapshot, _delta);
     this.drawProjectileTrails(snapshot);
     this.drawTowerSelection(snapshot, _delta);
+    if (quality !== 'low') this.drawBloomLayer(snapshot, quality);
+    else { for (let i = 0; i < this.bloomActiveCount; i++) this.bloomPool[i].setVisible(false); this.bloomActiveCount = 0; }
+    if (quality !== 'low') this.updateVignette();
+    else this.vignetteSprite.setVisible(false);
+    if (quality === 'high') this.updateNebulae(_delta);
+    else { for (const n of this.nebulae) n.setVisible(false); }
     this.updateTowerIdle(snapshot, _delta);
+    if (quality === 'high') this.drawPathEnergyPulses(snapshot, _delta);
+    this.updateLowLivesOverlay(snapshot, _delta);
+  }
+
+  // ===== BLOOM GLOW POOL =====
+
+  private drawBloomLayer(snap: GameStateSnapshot, quality: string = 'high') {
+    // Hide all pool sprites
+    for (let i = 0; i < this.bloomActiveCount; i++) {
+      this.bloomPool[i].setVisible(false);
+    }
+    this.bloomActiveCount = 0;
+
+    const maxBloom = quality === 'high' ? 150 : 100;
+    const cam = this.cameras.main;
+    const viewLeft = cam.worldView.x - CELL_SIZE * 4;
+    const viewRight = cam.worldView.x + cam.worldView.width + CELL_SIZE * 4;
+    const viewTop = cam.worldView.y - CELL_SIZE * 4;
+    const viewBottom = cam.worldView.y + cam.worldView.height + CELL_SIZE * 4;
+    const time = this.time.now / 1000;
+
+    // Towers: governor color glow with charge-up effect
+    for (const id in snap.towers) {
+      if (this.bloomActiveCount >= maxBloom) break;
+      const ts = snap.towers[id];
+      const cx = ts.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = ts.y * CELL_SIZE + CELL_SIZE / 2;
+      if (cx < viewLeft || cx > viewRight || cy < viewTop || cy > viewBottom) continue;
+
+      // Feature 3: Charge-up glow
+      const elapsed = time - ts.lastFireTime;
+      const cooldown = ts.stats.fireRate > 0 ? 1.0 / ts.stats.fireRate : 1;
+      const chargeRatio = Math.min(1, elapsed / cooldown);
+      const bloomAlpha = 0.06 + chargeRatio * 0.19; // 0.06 → 0.25
+      const bloomScale = (0.8 + chargeRatio * 0.6) * CELL_SIZE / 64; // 0.8 → 1.4
+
+      const color = getTowerColor(ts.towerType);
+      const img = this.bloomPool[this.bloomActiveCount++];
+      img.setPosition(cx, cy);
+      img.setTint(color);
+      img.setScale(bloomScale);
+      img.setAlpha(bloomAlpha);
+      img.setVisible(true);
+    }
+
+    // Projectiles: tower color glow, smaller
+    for (const id in snap.projectiles) {
+      if (this.bloomActiveCount >= 150) break;
+      const ps = snap.projectiles[id];
+      const px = ps.x * CELL_SIZE;
+      const py = ps.y * CELL_SIZE;
+      if (px < viewLeft || px > viewRight || py < viewTop || py > viewBottom) continue;
+
+      let color = 0xffffff;
+      const tower = snap.towers[ps.towerId];
+      if (tower) color = getTowerColor(tower.towerType);
+
+      const img = this.bloomPool[this.bloomActiveCount++];
+      img.setPosition(px, py);
+      img.setTint(color);
+      img.setScale((CELL_SIZE * 0.6) / 64);
+      img.setAlpha(0.3);
+      img.setVisible(true);
+    }
+
+    // Boss/elite enemies: pulsing glow
+    for (const id in snap.enemies) {
+      if (this.bloomActiveCount >= 150) break;
+      const es = snap.enemies[id];
+      if (!es.isAlive) continue;
+      if (es.enemyType !== 'boss' && !es.eliteAffix) continue;
+
+      const sprite = this.enemySprites.get(id);
+      if (!sprite || !sprite.visible) continue;
+
+      const color = getEnemyColor(es.enemyType);
+      const pulse = 0.15 + 0.08 * Math.sin(time * 3);
+      const scale = es.enemyType === 'boss' ? (CELL_SIZE * 1.5) / 64 : (CELL_SIZE * 1.0) / 64;
+
+      const img = this.bloomPool[this.bloomActiveCount++];
+      img.setPosition(sprite.x, sprite.y);
+      img.setTint(es.eliteAffix ? (ELITE_AFFIX_COLORS[es.eliteAffix] ?? color) : color);
+      img.setScale(scale);
+      img.setAlpha(pulse);
+      img.setVisible(true);
+    }
+  }
+
+  // ===== VIGNETTE =====
+
+  private updateVignette() {
+    const cam = this.cameras.main;
+    const cx = cam.scrollX + cam.width / (2 * cam.zoom);
+    const cy = cam.scrollY + cam.height / (2 * cam.zoom);
+    this.vignetteSprite.setPosition(cx, cy);
+    // Scale to cover viewport with 1.2x overflow
+    const scaleX = (cam.width / cam.zoom * 1.2) / 256;
+    const scaleY = (cam.height / cam.zoom * 1.2) / 256;
+    this.vignetteSprite.setScale(scaleX, scaleY);
+  }
+
+  // ===== NEBULAE =====
+
+  private initNebulae(snap: GameStateSnapshot) {
+    // Destroy existing nebulae
+    for (const n of this.nebulae) n.destroy();
+    this.nebulae = [];
+    this.nebulaeDriftX = [];
+    this.nebulaeDriftY = [];
+    this.nebulaePulsePhase = [];
+    this.nebulaePulsePeriod = [];
+    this.nebulaeBaseAlpha = [];
+
+    const mapW = snap.map.width * CELL_SIZE;
+    const mapH = snap.map.height * CELL_SIZE;
+    const colors = [0x44bbff, 0xcc44ff, 0x44ff88, 0xff4466];
+
+    for (let i = 0; i < 4; i++) {
+      const img = this.add.image(
+        Math.random() * mapW,
+        Math.random() * mapH,
+        'nebula_blob',
+      );
+      img.setBlendMode(Phaser.BlendModes.ADD);
+      img.setDepth(-0.5);
+      img.setTint(colors[i]);
+      const scale = 3 + Math.random() * 2;
+      img.setScale(scale);
+      const baseAlpha = 0.03 + Math.random() * 0.03;
+      img.setAlpha(baseAlpha);
+      this.nebulae.push(img);
+      this.nebulaeDriftX.push((Math.random() - 0.5) * 0.4); // -0.2 to 0.2 px/sec
+      this.nebulaeDriftY.push((Math.random() - 0.5) * 0.4);
+      this.nebulaePulsePhase.push(Math.random() * Math.PI * 2);
+      this.nebulaePulsePeriod.push(8 + Math.random() * 7); // 8-15s
+      this.nebulaeBaseAlpha.push(baseAlpha);
+    }
+  }
+
+  private updateNebulae(delta: number) {
+    const dt = delta / 1000;
+    const time = this.time.now / 1000;
+    for (let i = 0; i < this.nebulae.length; i++) {
+      const n = this.nebulae[i];
+      n.x += this.nebulaeDriftX[i] * dt;
+      n.y += this.nebulaeDriftY[i] * dt;
+      const pulse = Math.sin(time * (Math.PI * 2 / this.nebulaePulsePeriod[i]) + this.nebulaePulsePhase[i]);
+      n.setAlpha(this.nebulaeBaseAlpha[i] + pulse * 0.015);
+    }
   }
 
   // ===== SNAPSHOT DIFFING =====
 
   private detectEvents(snap: GameStateSnapshot) {
-    const currentEnemyIds = new Set(Object.keys(snap.enemies));
-    const currentProjectileIds = new Set(Object.keys(snap.projectiles));
+    // Build projectile set for removal detection (enemies checked via direct lookup)
+    const currentProjectileIds = new Set<string>();
+    for (const id in snap.projectiles) currentProjectileIds.add(id);
 
     // Enemy deaths: IDs in previous but not current (or not alive)
     for (const id of this.prevEnemyIds) {
@@ -432,6 +768,19 @@ export class GameScene extends Phaser.Scene {
             // Mark as dying so reconcileEnemies doesn't destroy it yet
             this.dyingEnemies.add(id);
 
+            const isElite = !!enemy?.eliteAffix;
+            const gfxQuality = useSettingsStore.getState().graphicsQuality;
+
+            // Determine killing color: tower that was targeting this enemy, or enemy's own color
+            let killColor = color;
+            for (const tid in snap.towers) {
+              const ts = snap.towers[tid];
+              if (ts.currentTarget === id) {
+                killColor = getTowerColor(ts.towerType);
+                break;
+              }
+            }
+
             if (isBoss) {
               // Boss: white flash circle expanding + camera shake + large burst
               const flash = this.add.circle(ex, ey, 4, 0xffffff, 0.9);
@@ -444,10 +793,28 @@ export class GameScene extends Phaser.Scene {
                 duration: 400,
                 onComplete: () => flash.destroy(),
               });
-              this.cameras.main.shake(300, 0.008);
-              showDeathBurst(this, ex, ey, color, 16);
+              this.shake(300, 0.008);
+              if (gfxQuality !== 'low') showDeathParticles(this, ex, ey, killColor, 20);
+              else showDeathBurst(this, ex, ey, killColor, 16);
+            } else if (isElite) {
+              // Elite: colored flash + moderate camera shake
+              const affixColor = ELITE_AFFIX_COLORS[enemy!.eliteAffix!] ?? killColor;
+              const flash = this.add.circle(ex, ey, 4, affixColor, 0.8);
+              flash.setDepth(9);
+              this.tweens.add({
+                targets: flash,
+                scaleX: 5,
+                scaleY: 5,
+                alpha: 0,
+                duration: 350,
+                onComplete: () => flash.destroy(),
+              });
+              this.shake(200, 0.005);
+              if (gfxQuality !== 'low') showDeathParticles(this, ex, ey, affixColor, 14);
+              else showDeathBurst(this, ex, ey, affixColor, 12);
             } else {
-              showDeathBurst(this, ex, ey, color);
+              if (gfxQuality !== 'low') showDeathParticles(this, ex, ey, killColor, 8);
+              else showDeathBurst(this, ex, ey, color);
             }
 
             if (isSplitter) {
@@ -480,7 +847,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Tower firing: lastFireTime changed
-    for (const [id, ts] of Object.entries(snap.towers)) {
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       const prevTime = this.prevTowerFireTimes.get(id);
       if (prevTime !== undefined && ts.lastFireTime !== prevTime && ts.lastFireTime > 0) {
         // Tower just fired — muzzle flash + sound + recoil
@@ -526,23 +894,46 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Projectile removal: ID in prev but not current → impact at last known position
+    const projQuality = useSettingsStore.getState().graphicsQuality;
     for (const id of this.prevProjectileIds) {
       if (!currentProjectileIds.has(id)) {
         const lastPos = this.projectileLastPos.get(id);
         if (lastPos) {
-          // Look up the tower color from the projectile's towerId
-          const trail = this.projectileTrails.get(id);
-          // We stored the towerId in projectileLastPos, so find color from prev snapshot
           const prevSnap = this.lastSnapshot;
           let color = 0xffffff;
+          let towerDamage = 0;
+          let dmgType: 'physical' | 'magic' = 'physical';
           if (prevSnap) {
             const proj = prevSnap.projectiles[id];
             if (proj) {
               const tower = prevSnap.towers[proj.towerId] ?? snap.towers[proj.towerId];
-              if (tower) color = getTowerColor(tower.towerType);
+              if (tower) {
+                color = getTowerColor(tower.towerType);
+                towerDamage = tower.stats.damage;
+                dmgType = tower.stats.damageType as 'physical' | 'magic';
+              }
             }
           }
           showImpact(this, lastPos.x, lastPos.y, color, 5);
+
+          // Feature 6: Projectile impact shockwave
+          if (projQuality !== 'low') {
+            const ringRadius = Math.min(40, Math.max(8, 8 + towerDamage * 0.03));
+            const ringColor = dmgType === 'physical' ? 0xffffff : 0xcc88ff;
+            const strokeWidth = dmgType === 'physical' ? 2 : 2.5;
+            const ringDuration = dmgType === 'physical' ? 200 : 250;
+            const ring = this.add.circle(lastPos.x, lastPos.y, ringRadius * 0.67, undefined, 0);
+            ring.setStrokeStyle(strokeWidth, ringColor, 0.5);
+            ring.setDepth(9);
+            this.tweens.add({
+              targets: ring,
+              radius: ringRadius,
+              alpha: 0,
+              duration: ringDuration,
+              onUpdate: () => ring.setStrokeStyle(strokeWidth, ringColor, ring.alpha * 0.5),
+              onComplete: () => ring.destroy(),
+            });
+          }
         }
         this.projectileLastPos.delete(id);
         this.projectileTrails.delete(id);
@@ -550,7 +941,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Enemy damage: currentHealth decreased
-    for (const [id, es] of Object.entries(snap.enemies)) {
+    const dmgQuality = useSettingsStore.getState().graphicsQuality;
+    for (const id in snap.enemies) {
+      const es = snap.enemies[id];
       if (!es.isAlive) continue;
       const prevHp = this.prevEnemyHealth.get(id);
       if (prevHp !== undefined && es.currentHealth < prevHp) {
@@ -559,7 +952,60 @@ export class GameScene extends Phaser.Scene {
           const sprite = this.enemySprites.get(id);
           const ex = sprite ? sprite.x : es.x * CELL_SIZE;
           const ey = sprite ? sprite.y : es.y * CELL_SIZE;
-          showDamageNumber(this, ex, ey - 10, dmg);
+
+          // Determine damage type from nearby projectile or tower targeting
+          let dmgType: 'physical' | 'magic' = 'magic';
+          {
+            const lastPos = this.projectileLastPos;
+            for (const [pid, pos] of lastPos) {
+              const prevSnap = this.lastSnapshot;
+              if (prevSnap?.projectiles[pid]) {
+                const proj = prevSnap.projectiles[pid];
+                const dist = Math.sqrt((pos.x - ex) ** 2 + (pos.y - ey) ** 2);
+                if (dist < CELL_SIZE * 3) {
+                  const tower = prevSnap.towers[proj.towerId] ?? snap.towers[proj.towerId];
+                  if (tower) dmgType = tower.stats.damageType as 'physical' | 'magic';
+                  break;
+                }
+              }
+            }
+          }
+
+          showDamageNumber(this, ex, ey - 10, dmg, undefined, { damageType: dmgType }, dmgQuality);
+
+          // Feature 5: Damage type indicators
+          if (dmgQuality !== 'low') {
+
+            if (dmgType === 'physical') {
+              // 3 small spark dots
+              for (let i = 0; i < 3; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dot = this.add.circle(ex, ey, 1.5, 0xffaa88, 0.7);
+                dot.setDepth(9);
+                this.tweens.add({
+                  targets: dot,
+                  x: ex + Math.cos(angle) * 8,
+                  y: ey + Math.sin(angle) * 8,
+                  alpha: 0,
+                  duration: 150,
+                  onComplete: () => dot.destroy(),
+                });
+              }
+            } else {
+              // Purple shimmer ring
+              const ring = this.add.circle(ex, ey, 4, undefined, 0);
+              ring.setStrokeStyle(1, 0xcc88ff, 0.4);
+              ring.setDepth(9);
+              this.tweens.add({
+                targets: ring,
+                radius: 12,
+                alpha: 0,
+                duration: 200,
+                onUpdate: () => ring.setStrokeStyle(1, 0xcc88ff, ring.alpha * 0.4),
+                onComplete: () => ring.destroy(),
+              });
+            }
+          }
         }
       }
     }
@@ -581,7 +1027,7 @@ export class GameScene extends Phaser.Scene {
     // --- Phase 2: Screen shake on life loss ---
     if (this.prevSharedLives !== null && snap.sharedLives < this.prevSharedLives) {
       const lost = this.prevSharedLives - snap.sharedLives;
-      this.cameras.main.shake(200, Math.min(0.012, 0.003 * lost));
+      this.shake(200, Math.min(0.012, 0.003 * lost));
     }
     this.prevSharedLives = snap.sharedLives;
 
@@ -589,17 +1035,49 @@ export class GameScene extends Phaser.Scene {
     const waveStarted = snap.currentWave?.started ?? false;
     if (waveStarted && !this.prevWaveStarted) {
       this.showWaveFanfare(snap.waveNumber);
+      // Feature 8: Path energy pulse on wave start
+      const isBossWave = snap.waveNumber % 10 === 0;
+      this.pathEnergyPulses.push({ progress: 0, color: isBossWave ? 0xff4466 : 0x44bbff });
+      // Boss wave start shake
+      if (isBossWave) {
+        this.shake(400, 0.008);
+      }
     }
     this.prevWaveStarted = waveStarted;
 
+    // Feature 9: Wave clear celebration
+    const waveCompleted = snap.currentWave?.completed ?? false;
+    if (waveCompleted && !this.prevWaveCompleted) {
+      this.showWaveClearCelebration();
+    }
+    this.prevWaveCompleted = waveCompleted;
+
     // --- Phase 2: Tower upgrade flash ---
-    for (const [id, ts] of Object.entries(snap.towers)) {
+    const upgradeQuality = useSettingsStore.getState().graphicsQuality;
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       const prevLevel = this.prevTowerLevels.get(id);
       if (prevLevel !== undefined && ts.level > prevLevel) {
         const cx = ts.x * CELL_SIZE + CELL_SIZE / 2;
         const cy = ts.y * CELL_SIZE + CELL_SIZE / 2;
         const color = getTowerColor(ts.towerType);
         showUpgradeFlash(this, cx, cy, color);
+
+        // Feature 7: Particle burst + squash-stretch
+        if (upgradeQuality !== 'low') {
+          showDeathParticles(this, cx, cy, color, 12);
+        }
+        const towerContainer = this.towerSprites.get(id);
+        if (towerContainer) {
+          this.tweens.add({
+            targets: towerContainer,
+            scaleX: 1.25,
+            scaleY: 1.25,
+            duration: 150,
+            yoyo: true,
+            ease: 'Sine.easeInOut',
+          });
+        }
       }
       this.prevTowerLevels.set(id, ts.level);
     }
@@ -609,7 +1087,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     // --- Synergy activation detection ---
-    for (const [id, ts] of Object.entries(snap.towers)) {
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       const prevSynergies = this.prevTowerSynergies.get(id) ?? [];
       const currentSynergies = ts.activeSynergies ?? [];
       for (const synId of currentSynergies) {
@@ -630,7 +1109,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     // --- Phase 4: Ability VFX detection ---
-    for (const [pid, ps] of Object.entries(snap.players)) {
+    for (const pid in snap.players) {
+      const ps = snap.players[pid];
       const prevCd = this.prevAbilityCooldowns.get(pid) ?? 0;
       // Ability just used: cooldown jumped from 0 to > 0
       if (prevCd <= 0 && ps.abilityCooldownRemaining > 0 && ps.governor) {
@@ -642,10 +1122,82 @@ export class GameScene extends Phaser.Scene {
       this.prevAbilityCooldowns.set(pid, ps.abilityCooldownRemaining);
     }
 
+    // Feature 13: Enemy ability VFX from game events
+    const abilityQuality = useSettingsStore.getState().graphicsQuality;
+    const gameEvents = useGameStore.getState().drainGameEvents();
+    for (const ev of gameEvents) {
+      if (ev.type === 'enemy_dodged') {
+        // Quality gated: low shows every 4th
+        if (abilityQuality === 'low' && Math.random() > 0.25) continue;
+        const ex = (ev.x as number) * CELL_SIZE;
+        const ey = (ev.y as number) * CELL_SIZE;
+        // White flash
+        const flash = this.add.circle(ex, ey, 8, 0xffffff, 0.6);
+        flash.setDepth(9);
+        this.tweens.add({ targets: flash, alpha: 0, scaleX: 1.5, scaleY: 1.5, duration: 200, onComplete: () => flash.destroy() });
+        // "MISS" floating text
+        const missText = this.add.text(ex, ey - 5, 'MISS', {
+          fontSize: '9px', color: '#ffffff', fontFamily: 'monospace', stroke: '#000000', strokeThickness: 2, resolution: 3,
+        });
+        missText.setDepth(10).setOrigin(0.5, 1);
+        this.tweens.add({ targets: missText, y: ey - 25, alpha: 0, duration: 600, ease: 'Power2', onComplete: () => missText.destroy() });
+      }
+      if (ev.type === 'mirror_damage') {
+        // Quality gated
+        if (abilityQuality === 'low' && Math.random() > 0.25) continue;
+        const towerId = ev.towerId as string;
+        const tower = snap.towers[towerId];
+        if (tower) {
+          const tx = tower.x * CELL_SIZE + CELL_SIZE / 2;
+          const ty = tower.y * CELL_SIZE + CELL_SIZE / 2;
+          // Red flash on tower
+          const tflash = this.add.circle(tx, ty, 10, 0xff4466, 0.5);
+          tflash.setDepth(9);
+          this.tweens.add({ targets: tflash, alpha: 0, scaleX: 2, scaleY: 2, duration: 300, onComplete: () => tflash.destroy() });
+        }
+      }
+    }
+
+    // Feature 13: Rally visual (pulsing yellow circle around healer enemies)
+    if (abilityQuality !== 'low') {
+      for (const id in snap.enemies) {
+        const es = snap.enemies[id];
+        if (!es.isAlive) continue;
+        if (es.rallyBuffed || (es.traits && es.traits.includes('rally'))) {
+          const sprite = this.enemySprites.get(id);
+          if (sprite && sprite.visible) {
+            const pulse = 0.2 + 0.15 * Math.sin(this.time.now / 300);
+            const ring = this.add.circle(sprite.x, sprite.y, 14, undefined, 0);
+            ring.setStrokeStyle(1.5, 0xffdd44, pulse);
+            ring.setDepth(3);
+            this.time.delayedCall(60, () => ring.destroy());
+          }
+        }
+      }
+    }
+
+    // Feature 14: Zone ability VFX - detect new zones from snapshot
+    const activeZones = snap.activeZones ?? [];
+    const currentZoneIds = new Set<string>();
+    for (const zone of activeZones) {
+      const zoneKey = `${zone.zoneId}_${zone.playerId}`;
+      currentZoneIds.add(zoneKey);
+      if (!this.prevActiveZoneIds.has(zoneKey)) {
+        // New zone appeared - spawn zone effect
+        const zx = zone.x * CELL_SIZE;
+        const zy = zone.y * CELL_SIZE;
+        const zoneRadius = zone.radius * CELL_SIZE;
+        const isFireGov = zone.governor === 'fire';
+        showZoneEffect(this, zx, zy, zoneRadius, isFireGov ? 'fire' : 'ice', zone.remainingDuration, abilityQuality);
+      }
+    }
+    this.prevActiveZoneIds = currentZoneIds;
+
     // Update tracking state
     this.prevEnemyIds = new Set<string>();
     this.prevEnemyHealth.clear();
-    for (const [id, es] of Object.entries(snap.enemies)) {
+    for (const id in snap.enemies) {
+      const es = snap.enemies[id];
       if (es.isAlive) {
         this.prevEnemyIds.add(id);
         this.prevEnemyHealth.set(id, es.currentHealth);
@@ -654,7 +1206,8 @@ export class GameScene extends Phaser.Scene {
     this.prevProjectileIds = currentProjectileIds;
 
     // Update projectile last positions
-    for (const [id, ps] of Object.entries(snap.projectiles)) {
+    for (const id in snap.projectiles) {
+      const ps = snap.projectiles[id];
       this.projectileLastPos.set(id, { x: ps.x * CELL_SIZE, y: ps.y * CELL_SIZE });
     }
   }
@@ -703,6 +1256,46 @@ export class GameScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
+    // Screen flash: ADD blend rectangle
+    const flashCx = cam.scrollX + cam.width / (2 * cam.zoom);
+    const flashCy = cam.scrollY + cam.height / (2 * cam.zoom);
+    const flashW = cam.width / cam.zoom * 1.5;
+    const flashH = cam.height / cam.zoom * 1.5;
+
+    // Determine flash color and intensity from wave type
+    let flashColor = 0x44bbff;
+    let flashAlpha = 0.12;
+    let flashDuration = 400;
+    const snap = useGameStore.getState().snapshot;
+    if (snap) {
+      const isBossWave = waveNumber % 10 === 0;
+      if (isBossWave) {
+        flashColor = 0xff2222;
+        flashAlpha = 0.2;
+        flashDuration = 600;
+      } else {
+        // Check for elite wave
+        const enemies = Object.values(snap.enemies);
+        const firstElite = enemies.find(e => e.eliteAffix);
+        if (firstElite) {
+          flashColor = ELITE_AFFIX_COLORS[firstElite.eliteAffix!] ?? 0xcc44ff;
+          flashAlpha = 0.15;
+          flashDuration = 400;
+        }
+      }
+    }
+
+    const flashRect = this.add.rectangle(flashCx, flashCy, flashW, flashH, flashColor, flashAlpha);
+    flashRect.setBlendMode(Phaser.BlendModes.ADD);
+    flashRect.setDepth(19);
+    this.tweens.add({
+      targets: flashRect,
+      alpha: 0,
+      duration: flashDuration,
+      ease: 'Power2',
+      onComplete: () => flashRect.destroy(),
+    });
+
     // "WAVE X" text center screen
     const cx = cam.scrollX + cam.width / (2 * cam.zoom);
     const cy = cam.scrollY + cam.height / (2 * cam.zoom);
@@ -723,6 +1316,108 @@ export class GameScene extends Phaser.Scene {
       ease: 'Power2',
       onComplete: () => text.destroy(),
     });
+  }
+
+  // ===== PATH ENERGY PULSES (Feature 8) =====
+
+  private drawPathEnergyPulses(snap: GameStateSnapshot, delta: number) {
+    const path = snap.map.path;
+    if (path.length < 2 || this.pathEnergyPulses.length === 0) return;
+
+    const dt = delta / 1000;
+    let totalLen = 0;
+    const segLens: number[] = [0];
+    for (let i = 1; i < path.length; i++) {
+      const dx = (path[i][0] - path[i - 1][0]) * CELL_SIZE;
+      const dy = (path[i][1] - path[i - 1][1]) * CELL_SIZE;
+      totalLen += Math.sqrt(dx * dx + dy * dy);
+      segLens.push(totalLen);
+    }
+    if (totalLen === 0) return;
+
+    const g = this.pathFlowGraphics;
+    let writeIdx = 0;
+    for (let pi = 0; pi < this.pathEnergyPulses.length; pi++) {
+      const pulse = this.pathEnergyPulses[pi];
+      pulse.progress += dt * 0.4;
+      if (pulse.progress >= 1) continue;
+      this.pathEnergyPulses[writeIdx++] = pulse;
+
+      // Draw bright dot + 3 trailing dots
+      for (let ti = 0; ti < 4; ti++) {
+        const t = Math.max(0, pulse.progress - ti * 0.03);
+        const dist = t * totalLen;
+        let segIdx = 0;
+        for (let s = 1; s < segLens.length; s++) {
+          if (segLens[s] >= dist) { segIdx = s - 1; break; }
+        }
+        const segStart = segLens[segIdx];
+        const segEnd = segLens[segIdx + 1] ?? totalLen;
+        const segT = segEnd > segStart ? (dist - segStart) / (segEnd - segStart) : 0;
+        const px = Phaser.Math.Linear(path[segIdx][0], path[segIdx + 1]?.[0] ?? path[segIdx][0], segT) * CELL_SIZE;
+        const py = Phaser.Math.Linear(path[segIdx][1], path[segIdx + 1]?.[1] ?? path[segIdx][1], segT) * CELL_SIZE;
+
+        const alpha = (1 - ti * 0.25) * 0.8;
+        const radius = ti === 0 ? 4 : 2.5;
+        g.fillStyle(pulse.color, alpha);
+        g.fillCircle(px, py, radius);
+      }
+    }
+    this.pathEnergyPulses.length = writeIdx;
+  }
+
+  // ===== WAVE CLEAR CELEBRATION (Feature 9) =====
+
+  private showWaveClearCelebration() {
+    const quality = useSettingsStore.getState().graphicsQuality;
+    const neonColors = [0x44bbff, 0xff4466, 0x44ff88, 0xffdd44, 0xcc88ff];
+
+    if (quality !== 'low') {
+      const cam = this.cameras.main;
+      const vw = cam.width / cam.zoom;
+      const vh = cam.height / cam.zoom;
+      for (let burst = 0; burst < 3; burst++) {
+        setTimeout(() => {
+          const bx = cam.scrollX + Math.random() * vw;
+          const by = cam.scrollY + Math.random() * vh;
+          const color = neonColors[Math.floor(Math.random() * neonColors.length)];
+          showDeathParticles(this, bx, by, color, 15);
+        }, burst * 200);
+      }
+    }
+  }
+
+  // ===== LOW-LIVES OVERLAY (Feature 10) =====
+
+  private updateLowLivesOverlay(snap: GameStateSnapshot, delta: number) {
+    if (snap.sharedLives <= 5) {
+      if (!this.lowLivesOverlay) {
+        const cam = this.cameras.main;
+        const cx = cam.scrollX + cam.width / (2 * cam.zoom);
+        const cy = cam.scrollY + cam.height / (2 * cam.zoom);
+        const w = cam.width / cam.zoom * 2;
+        const h = cam.height / cam.zoom * 2;
+        this.lowLivesOverlay = this.add.rectangle(cx, cy, w, h, 0xff0000, 0);
+        this.lowLivesOverlay.setBlendMode(Phaser.BlendModes.ADD);
+        this.lowLivesOverlay.setDepth(19);
+      }
+      // Position overlay to follow camera
+      const cam = this.cameras.main;
+      const cx = cam.scrollX + cam.width / (2 * cam.zoom);
+      const cy = cam.scrollY + cam.height / (2 * cam.zoom);
+      this.lowLivesOverlay.setPosition(cx, cy);
+      const w = cam.width / cam.zoom * 2;
+      const h = cam.height / cam.zoom * 2;
+      this.lowLivesOverlay.setSize(w, h);
+
+      // Pulse alpha
+      const time = this.time.now / 1000;
+      const pulseAlpha = 0.08 * (0.5 + 0.5 * Math.sin(time * Math.PI));
+      this.lowLivesOverlay.setAlpha(pulseAlpha);
+    } else if (this.lowLivesOverlay) {
+      this.lowLivesOverlay.destroy();
+      this.lowLivesOverlay = null;
+    }
   }
 
   // ===== KILL STREAK =====
@@ -818,7 +1513,8 @@ export class GameScene extends Phaser.Scene {
     const g = this.effectsGraphics;
     g.clear();
 
-    for (const [id, es] of Object.entries(snap.enemies)) {
+    for (const id in snap.enemies) {
+      const es = snap.enemies[id];
       if (!es.isAlive) continue;
       const sprite = this.enemySprites.get(id);
       if (!sprite) continue;
@@ -866,7 +1562,8 @@ export class GameScene extends Phaser.Scene {
       // 2e. Healer beam: pulsing green line to nearest damaged ally
       if (es.enemyType === 'healer') {
         let nearestDamaged: { x: number; y: number; dist: number } | null = null;
-        for (const [oid, oes] of Object.entries(snap.enemies)) {
+        for (const oid in snap.enemies) {
+          const oes = snap.enemies[oid];
           if (oid === id || !oes.isAlive || oes.currentHealth >= oes.maxHealth) continue;
           const oSprite = this.enemySprites.get(oid);
           if (!oSprite) continue;
@@ -896,68 +1593,112 @@ export class GameScene extends Phaser.Scene {
         g.fillStyle(0xff2200, rageAlpha);
         g.fillCircle(ex, ey, 10);
       }
+
+      // Elite affix visual effects
+      if (es.eliteAffix) {
+        const affixColor = ELITE_AFFIX_COLORS[es.eliteAffix] ?? 0xffffff;
+
+        // Pulsing glow ring (all elites)
+        const glowAlpha = 0.15 + 0.1 * Math.sin(time * 3);
+        g.lineStyle(2, affixColor, glowAlpha);
+        g.strokeCircle(ex, ey, 14 + Math.sin(time * 2) * 1.5);
+
+        if (es.eliteAffix === 'deflector') {
+          // Orbiting dots
+          for (let i = 0; i < 4; i++) {
+            const angle = time * 3 + (i * Math.PI * 2) / 4;
+            const dx = Math.cos(angle) * 12;
+            const dy = Math.sin(angle) * 12;
+            g.fillStyle(affixColor, 0.6);
+            g.fillCircle(ex + dx, ey + dy, 1.5);
+          }
+        } else if (es.eliteAffix === 'phase_shifter' && es.phaseActive) {
+          // Invulnerability shimmer
+          const shimmerAlpha = 0.2 + 0.15 * Math.sin(time * 8);
+          g.fillStyle(affixColor, shimmerAlpha);
+          g.fillCircle(ex, ey, 13);
+        } else if (es.eliteAffix === 'juggernaut') {
+          // Heavy footprint marks
+          const footAlpha = 0.1 + 0.05 * Math.sin(time * 2);
+          g.fillStyle(affixColor, footAlpha);
+          g.fillRect(ex - 2, ey + 8, 4, 2);
+        }
+      }
     }
 
-    // 2d. Governor tower VFX — viewport-culled particles
+    // Governor tower VFX now handled by particle emitters (reconcileTowerEmitters)
+  }
+
+  // ===== TOWER PARTICLE EMITTERS =====
+
+  private static readonly GOVERNOR_PARTICLE_CONFIGS: Record<string, {
+    tint: number; speedY: [number, number]; speedX: [number, number];
+    lifespan: number; frequency: number; alpha: { start: number; end: number };
+    scale: { start: number; end: number };
+  }> = {
+    fire:    { tint: 0xff6600, speedY: [-30, -15], speedX: [-8, 8], lifespan: 600, frequency: 150, alpha: { start: 0.7, end: 0 }, scale: { start: 0.5, end: 0.1 } },
+    ice:     { tint: 0x88ddff, speedY: [10, 25], speedX: [-6, 6], lifespan: 900, frequency: 200, alpha: { start: 0.5, end: 0 }, scale: { start: 0.4, end: 0.1 } },
+    thunder: { tint: 0xffee00, speedY: [-20, 20], speedX: [-20, 20], lifespan: 200, frequency: 100, alpha: { start: 0.8, end: 0 }, scale: { start: 0.3, end: 0.1 } },
+    poison:  { tint: 0x88ff00, speedY: [10, 20], speedX: [-5, 5], lifespan: 700, frequency: 180, alpha: { start: 0.5, end: 0 }, scale: { start: 0.4, end: 0.2 } },
+    death:   { tint: 0xcc88ff, speedY: [-15, -5], speedX: [-10, 10], lifespan: 1000, frequency: 200, alpha: { start: 0.4, end: 0 }, scale: { start: 0.5, end: 0.1 } },
+    nature:  { tint: 0x44ff44, speedY: [-10, 10], speedX: [-10, 10], lifespan: 800, frequency: 180, alpha: { start: 0.5, end: 0 }, scale: { start: 0.4, end: 0.1 } },
+    arcane:  { tint: 0xbb66ff, speedY: [-15, 15], speedX: [-15, 15], lifespan: 600, frequency: 120, alpha: { start: 0.6, end: 0 }, scale: { start: 0.4, end: 0.1 } },
+    holy:    { tint: 0xffdd88, speedY: [-20, -8], speedX: [-4, 4], lifespan: 1200, frequency: 160, alpha: { start: 0.5, end: 0 }, scale: { start: 0.5, end: 0.2 } },
+  };
+
+  private createTowerEmitter(gov: string, cx: number, cy: number): Phaser.GameObjects.Particles.ParticleEmitter {
+    const cfg = GameScene.GOVERNOR_PARTICLE_CONFIGS[gov] ?? GameScene.GOVERNOR_PARTICLE_CONFIGS.fire;
+    const emitter = this.add.particles(cx, cy, 'particle_dot', {
+      blendMode: Phaser.BlendModes.ADD,
+      lifespan: cfg.lifespan,
+      frequency: cfg.frequency,
+      speedX: { min: cfg.speedX[0], max: cfg.speedX[1] },
+      speedY: { min: cfg.speedY[0], max: cfg.speedY[1] },
+      alpha: cfg.alpha,
+      scale: cfg.scale,
+      tint: cfg.tint,
+      quantity: 1,
+    });
+    emitter.setDepth(3.5);
+    return emitter;
+  }
+
+  private reconcileTowerEmitters(snap: GameStateSnapshot) {
     const cam = this.cameras.main;
     const viewLeft = cam.worldView.x - CELL_SIZE * 2;
     const viewRight = cam.worldView.x + cam.worldView.width + CELL_SIZE * 2;
     const viewTop = cam.worldView.y - CELL_SIZE * 2;
     const viewBottom = cam.worldView.y + cam.worldView.height + CELL_SIZE * 2;
-    const time = this.time.now / 1000;
 
-    for (const [, ts] of Object.entries(snap.towers)) {
-      const cx = ts.x * CELL_SIZE + CELL_SIZE / 2;
-      const cy = ts.y * CELL_SIZE + CELL_SIZE / 2;
-      if (cx < viewLeft || cx > viewRight || cy < viewTop || cy > viewBottom) continue;
+    // Remove emitters for towers that no longer exist
+    for (const [id, emitter] of this.towerEmitters) {
+      if (!snap.towers[id]) {
+        emitter.destroy();
+        this.towerEmitters.delete(id);
+      }
+    }
+
+    // Create or update emitters for current towers
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       const gov = getGovernorForTower(ts.towerType);
       if (!gov) continue;
 
-      switch (gov) {
-        case 'fire': {
-          // Rising flame dots
-          for (let i = 0; i < 2; i++) {
-            const fx = cx + (Math.sin(time * 3 + i * 2 + cx) * 4);
-            const fy = cy - 3 - ((time * 15 + i * 7) % 14);
-            g.fillStyle(0xff6600, 0.3 + 0.15 * Math.sin(time * 5 + i));
-            g.fillCircle(fx, fy, 1.5);
-          }
-          break;
-        }
-        case 'ice': {
-          // Falling frost sparkles
-          for (let i = 0; i < 2; i++) {
-            const fx = cx + Math.sin(time * 2 + i * 3 + cx) * 5;
-            const fy = cy - 6 + ((time * 8 + i * 5) % 14);
-            g.fillStyle(0x88ddff, 0.25 + 0.1 * Math.sin(time * 4 + i));
-            g.fillCircle(fx, fy, 1);
-          }
-          break;
-        }
-        case 'poison': {
-          // Dripping green
-          const dx = cx + Math.sin(time * 1.5 + cx) * 3;
-          const dy = cy + 6 + ((time * 6 + cx) % 10);
-          g.fillStyle(0x88ff00, 0.2);
-          g.fillCircle(dx, dy, 1.5);
-          break;
-        }
-        case 'holy': {
-          // Golden halo glow
-          const haloAlpha = 0.08 + 0.05 * Math.sin(time * 2 + cx);
-          g.fillStyle(0xffdd88, haloAlpha);
-          g.fillCircle(cx, cy, CELL_SIZE * 0.6);
-          break;
-        }
-        default: {
-          // Subtle colored emission for other governors
-          const color = getTowerColor(ts.towerType);
-          const px = cx + Math.sin(time * 2 + cx * 0.1) * 4;
-          const py = cy - 4 - ((time * 10 + cx) % 10);
-          g.fillStyle(color, 0.15);
-          g.fillCircle(px, py, 1);
-          break;
-        }
+      const cx = ts.x * CELL_SIZE + CELL_SIZE / 2;
+      const cy = ts.y * CELL_SIZE + CELL_SIZE / 2;
+      const inView = cx >= viewLeft && cx <= viewRight && cy >= viewTop && cy <= viewBottom;
+
+      let emitter = this.towerEmitters.get(id);
+      if (!emitter) {
+        emitter = this.createTowerEmitter(gov, cx, cy);
+        this.towerEmitters.set(id, emitter);
+      }
+
+      // Pause/resume based on viewport culling
+      if (inView) {
+        emitter.start();
+      } else {
+        emitter.stop();
       }
     }
   }
@@ -969,10 +1710,19 @@ export class GameScene extends Phaser.Scene {
     g.clear();
     this.towerGlowPhase += delta / 1000;
 
-    for (const [id, ts] of Object.entries(snap.towers)) {
+    // Viewport bounds for culling
+    const cam = this.cameras.main;
+    const glowLeft = cam.worldView.x - CELL_SIZE * 8;
+    const glowRight = cam.worldView.x + cam.worldView.width + CELL_SIZE * 8;
+    const glowTop = cam.worldView.y - CELL_SIZE * 8;
+    const glowBottom = cam.worldView.y + cam.worldView.height + CELL_SIZE * 8;
+
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       const color = getTowerColor(ts.towerType);
       const cx = ts.x * CELL_SIZE + CELL_SIZE / 2;
       const cy = ts.y * CELL_SIZE + CELL_SIZE / 2;
+      if (cx < glowLeft || cx > glowRight || cy < glowTop || cy > glowBottom) continue;
       const alpha = 0.05 + 0.1 * (0.5 + 0.5 * Math.sin(this.towerGlowPhase * 1.5 + cx * 0.01));
       const radius = CELL_SIZE * 0.7;
       g.fillStyle(color, alpha);
@@ -989,20 +1739,29 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Build tower position lookup for synergy line rendering (O(n) instead of O(n²))
+    const towerByPos = this._towerPosMap;
+    towerByPos.clear();
+    for (const id in snap.towers) {
+      const t = snap.towers[id];
+      towerByPos.set(`${t.x},${t.y}`, t);
+    }
+
     // Draw synergy lines between adjacent towers with active synergies
     const drawnPairs = new Set<string>();
     const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    for (const [id, ts] of Object.entries(snap.towers)) {
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       if (!ts.activeSynergies || ts.activeSynergies.length === 0) continue;
       const cx = ts.x * CELL_SIZE + CELL_SIZE / 2;
       const cy = ts.y * CELL_SIZE + CELL_SIZE / 2;
       for (const [dx, dy] of dirs) {
         const nx = ts.x + dx;
         const ny = ts.y + dy;
-        const neighbor = Object.values(snap.towers).find(t => t.x === nx && t.y === ny);
+        const neighbor = towerByPos.get(`${nx},${ny}`);
         if (!neighbor || !neighbor.activeSynergies || neighbor.activeSynergies.length === 0) continue;
         // Deduplicate lines
-        const pairKey = [id, neighbor.towerId].sort().join('-');
+        const pairKey = id < neighbor.towerId ? `${id}-${neighbor.towerId}` : `${neighbor.towerId}-${id}`;
         if (drawnPairs.has(pairKey)) continue;
         drawnPairs.add(pairKey);
 
@@ -1080,9 +1839,19 @@ export class GameScene extends Phaser.Scene {
 
   private updateTowerIdle(snap: GameStateSnapshot, delta: number) {
     const time = this.time.now / 1000;
-    for (const [id, ts] of Object.entries(snap.towers)) {
+    const cam = this.cameras.main;
+    const idleLeft = cam.worldView.x - CELL_SIZE * 2;
+    const idleRight = cam.worldView.x + cam.worldView.width + CELL_SIZE * 2;
+    const idleTop = cam.worldView.y - CELL_SIZE * 2;
+    const idleBottom = cam.worldView.y + cam.worldView.height + CELL_SIZE * 2;
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       const container = this.towerSprites.get(id);
       if (!container) continue;
+      // Skip idle animation for off-screen towers
+      const px = ts.x * CELL_SIZE + CELL_SIZE / 2;
+      const py = ts.y * CELL_SIZE + CELL_SIZE / 2;
+      if (px < idleLeft || px > idleRight || py < idleTop || py > idleBottom) continue;
       const target = ts.currentTarget ? snap.enemies[ts.currentTarget] : null;
       const hasTarget = target && target.isAlive;
       if (!hasTarget) {
@@ -1204,8 +1973,8 @@ export class GameScene extends Phaser.Scene {
       const px = Phaser.Math.Linear(path[segIdx][0], path[segIdx + 1]?.[0] ?? path[segIdx][0], segT) * CELL_SIZE;
       const py = Phaser.Math.Linear(path[segIdx][1], path[segIdx + 1]?.[1] ?? path[segIdx][1], segT) * CELL_SIZE;
 
-      g.fillStyle(0x44bbff, 0.3);
-      g.fillCircle(px, py, 2);
+      g.fillStyle(0x44bbff, 0.5);
+      g.fillCircle(px, py, 2.5);
     }
   }
 
@@ -1215,7 +1984,8 @@ export class GameScene extends Phaser.Scene {
     const g = this.trailGraphics;
     g.clear();
 
-    for (const [id, ps] of Object.entries(snap.projectiles)) {
+    for (const id in snap.projectiles) {
+      const ps = snap.projectiles[id];
       const px = ps.x * CELL_SIZE;
       const py = ps.y * CELL_SIZE;
 
@@ -1233,12 +2003,21 @@ export class GameScene extends Phaser.Scene {
       const tower = snap.towers[ps.towerId];
       if (tower) color = getTowerColor(tower.towerType);
 
-      // Draw trail
-      for (let i = 0; i < trail.length - 1; i++) {
-        const alpha = ((i + 1) / trail.length) * 0.4;
-        const size = ((i + 1) / trail.length) * 2;
-        g.fillStyle(color, alpha);
-        g.fillCircle(trail[i].x, trail[i].y, size);
+      // Draw trail as connected lines with brighter head
+      if (trail.length >= 2) {
+        for (let i = 0; i < trail.length - 1; i++) {
+          const alpha = ((i + 1) / trail.length) * 0.6;
+          const width = ((i + 1) / trail.length) * 2.5;
+          g.lineStyle(width, color, alpha);
+          g.beginPath();
+          g.moveTo(trail[i].x, trail[i].y);
+          g.lineTo(trail[i + 1].x, trail[i + 1].y);
+          g.strokePath();
+        }
+        // Bright head dot
+        const head = trail[trail.length - 1];
+        g.fillStyle(0xffffff, 0.7);
+        g.fillCircle(head.x, head.y, 2);
       }
     }
   }
@@ -1330,14 +2109,14 @@ export class GameScene extends Phaser.Scene {
     g.clear();
 
     // Draw path cells
-    g.fillStyle(0x44bbff, 0.08);
+    g.fillStyle(0x44bbff, 0.12);
     for (const [cx, cy] of snap.map.pathCells) {
       g.fillRect(cx * CELL_SIZE, cy * CELL_SIZE, CELL_SIZE, CELL_SIZE);
     }
 
     // Draw path line
     if (snap.map.path.length >= 2) {
-      g.lineStyle(2, 0x44bbff, 0.25);
+      g.lineStyle(3, 0x44bbff, 0.4);
       g.beginPath();
       g.moveTo(snap.map.path[0][0] * CELL_SIZE, snap.map.path[0][1] * CELL_SIZE);
       for (let i = 1; i < snap.map.path.length; i++) {
@@ -1350,18 +2129,18 @@ export class GameScene extends Phaser.Scene {
   // ===== TOWERS =====
 
   private reconcileTowers(snap: GameStateSnapshot) {
-    const current = new Set(Object.keys(snap.towers));
     // Determine local player ID for ownership highlighting
     const localPlayerId = (window as any).__playerId || 'local-player';
 
     for (const [id, sprite] of this.towerSprites) {
-      if (!current.has(id)) {
+      if (!(id in snap.towers)) {
         sprite.destroy();
         this.towerSprites.delete(id);
       }
     }
 
-    for (const [id, ts] of Object.entries(snap.towers)) {
+    for (const id in snap.towers) {
+      const ts = snap.towers[id];
       let container = this.towerSprites.get(id);
       const isOwner = ts.ownerId === localPlayerId;
       if (!container) {
@@ -1851,19 +2630,19 @@ export class GameScene extends Phaser.Scene {
   // ===== ENEMIES =====
 
   private reconcileEnemies(snap: GameStateSnapshot) {
-    const current = new Set(Object.keys(snap.enemies));
     const now = Date.now();
 
     for (const [id, sprite] of this.enemySprites) {
       if (this.dyingEnemies.has(id)) continue; // Don't destroy during death animation
-      if (!current.has(id) || !snap.enemies[id]?.isAlive) {
+      if (!(id in snap.enemies) || !snap.enemies[id]?.isAlive) {
         sprite.destroy();
         this.enemySprites.delete(id);
         this.enemyPrevPos.delete(id);
       }
     }
 
-    for (const [id, es] of Object.entries(snap.enemies)) {
+    for (const id in snap.enemies) {
+      const es = snap.enemies[id];
       if (!es.isAlive) continue;
       if (this.dyingEnemies.has(id)) continue;
 
@@ -2056,6 +2835,26 @@ export class GameScene extends Phaser.Scene {
         break;
       }
     }
+    // Elite: draw larger hexagon with affix-colored border over the base shape
+    if (es.eliteAffix) {
+      const affixColor = ELITE_AFFIX_COLORS[es.eliteAffix] ?? 0xffffff;
+      g.lineStyle(2.5, affixColor, 0.9);
+      g.fillStyle(color, 0.95);
+      g.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+        const px = Math.cos(a) * 11;
+        const py = Math.sin(a) * 11;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+      // Inner glow
+      g.fillStyle(affixColor, 0.15);
+      g.fillCircle(0, 0, 9);
+    }
+
     container.add(g);
 
     // Flying glow ring
@@ -2065,42 +2864,64 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Health bar
-    const hbY = es.enemyType === 'boss' ? -15 : -11;
-    const hbBg = this.add.rectangle(0, hbY, 16, 3, 0x000000, 0.7);
+    const isElite = !!es.eliteAffix;
+    const hbY = es.enemyType === 'boss' ? -15 : isElite ? -16 : -11;
+    const hbWidth = isElite ? 20 : 16;
+    const hbBg = this.add.rectangle(0, hbY, hbWidth, 3, 0x000000, 0.7);
     container.add(hbBg);
     const hpPct = es.currentHealth / es.maxHealth;
-    const hbFill = this.add.rectangle(-8 + 8 * hpPct, hbY, 16 * hpPct, 3, 0x44ff88, 0.9);
+    const hbFill = this.add.rectangle(-hbWidth / 2 + (hbWidth / 2) * hpPct, hbY, hbWidth * hpPct, 3, 0x44ff88, 0.9);
     hbFill.setName('hpBar');
     container.add(hbFill);
+
+    // Shield bar (for shielded elites)
+    if (es.eliteAffix === 'shielded' && es.shieldMaxHealth && es.shieldMaxHealth > 0) {
+      const sbY = hbY - 4;
+      const sbBg = this.add.rectangle(0, sbY, hbWidth, 2, 0x000000, 0.5);
+      sbBg.setName('shieldBarBg');
+      container.add(sbBg);
+      const shieldPct = (es.shieldHealth ?? 0) / es.shieldMaxHealth;
+      const sbFill = this.add.rectangle(-hbWidth / 2 + (hbWidth / 2) * shieldPct, sbY, hbWidth * shieldPct, 2, 0x6688ff, 0.9);
+      sbFill.setName('shieldBar');
+      container.add(sbFill);
+    }
 
     return container;
   }
 
   private updateEnemyHealthBar(container: Phaser.GameObjects.Container, es: EnemySnapshot) {
+    const isElite = !!es.eliteAffix;
+    const hbWidth = isElite ? 20 : 16;
     const hpBar = container.getByName('hpBar') as Phaser.GameObjects.Rectangle | null;
     if (hpBar) {
       const pct = Math.max(0, es.currentHealth / es.maxHealth);
-      hpBar.width = 16 * pct;
-      hpBar.x = -8 + 8 * pct;
+      hpBar.width = hbWidth * pct;
+      hpBar.x = -hbWidth / 2 + (hbWidth / 2) * pct;
       if (pct > 0.5) hpBar.fillColor = 0x44ff88;
       else if (pct > 0.25) hpBar.fillColor = 0xffdd44;
       else hpBar.fillColor = 0xff4466;
+    }
+    // Update shield bar
+    const shieldBar = container.getByName('shieldBar') as Phaser.GameObjects.Rectangle | null;
+    if (shieldBar && es.shieldMaxHealth && es.shieldMaxHealth > 0) {
+      const shieldPct = Math.max(0, (es.shieldHealth ?? 0) / es.shieldMaxHealth);
+      shieldBar.width = hbWidth * shieldPct;
+      shieldBar.x = -hbWidth / 2 + (hbWidth / 2) * shieldPct;
     }
   }
 
   // ===== PROJECTILES =====
 
   private reconcileProjectiles(snap: GameStateSnapshot) {
-    const current = new Set(Object.keys(snap.projectiles));
-
     for (const [id, sprite] of this.projectileSprites) {
-      if (!current.has(id)) {
+      if (!(id in snap.projectiles)) {
         sprite.destroy();
         this.projectileSprites.delete(id);
       }
     }
 
-    for (const [id, ps] of Object.entries(snap.projectiles)) {
+    for (const id in snap.projectiles) {
+      const ps = snap.projectiles[id];
       const px = ps.x * CELL_SIZE;
       const py = ps.y * CELL_SIZE;
 
@@ -2203,6 +3024,9 @@ export class GameScene extends Phaser.Scene {
 
   private updateGhost(pointer: Phaser.Input.Pointer) {
     this.ghostGraphics.clear();
+    // Clean up ghost overlay texts
+    if (this.ghostDpsText) { this.ghostDpsText.destroy(); this.ghostDpsText = null; }
+    if (this.ghostNameText) { this.ghostNameText.destroy(); this.ghostNameText = null; }
     const uiStore = useUIStore.getState();
 
     // Ability targeting ghost: show AoE radius circle
@@ -2239,7 +3063,20 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (!uiStore.placementMode || !uiStore.selectedTowerType) return;
+    if (!uiStore.placementMode || !uiStore.selectedTowerType) {
+      // Revert cursor when not in placement mode
+      if (this._prevCursorStyle !== 'default') {
+        this.input.setDefaultCursor('default');
+        this._prevCursorStyle = 'default';
+      }
+      return;
+    }
+
+    // Feature 12: Crosshair cursor during placement
+    if (this._prevCursorStyle !== 'crosshair') {
+      this.input.setDefaultCursor('crosshair');
+      this._prevCursorStyle = 'crosshair';
+    }
 
     const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const cellX = Math.floor(worldPoint.x / CELL_SIZE);
@@ -2303,6 +3140,33 @@ export class GameScene extends Phaser.Scene {
         cellY * CELL_SIZE + CELL_SIZE / 2,
         stats.range * CELL_SIZE,
       );
+
+      // Feature 11: DPS preview text below ghost
+      const dps = estimateTowerDPS(uiStore.selectedTowerType as TowerType);
+      const ghostCx = cellX * CELL_SIZE + CELL_SIZE / 2;
+      const ghostCy = cellY * CELL_SIZE + CELL_SIZE;
+      this.ghostDpsText = this.add.text(ghostCx, ghostCy + 2, `DPS: ${dps}`, {
+        fontSize: '8px',
+        color: '#44bbff',
+        fontFamily: 'monospace',
+        stroke: '#000000',
+        strokeThickness: 2,
+        resolution: 3,
+      });
+      this.ghostDpsText.setDepth(5);
+      this.ghostDpsText.setOrigin(0.5, 0);
+
+      // Feature 12: Tower type name label on ghost
+      this.ghostNameText = this.add.text(ghostCx, cellY * CELL_SIZE - 2, uiStore.selectedTowerType, {
+        fontSize: '7px',
+        color: '#e0e0f0',
+        fontFamily: 'monospace',
+        stroke: '#000000',
+        strokeThickness: 2,
+        resolution: 3,
+      });
+      this.ghostNameText.setDepth(5);
+      this.ghostNameText.setOrigin(0.5, 1);
     }
 
     // Path preview: show how enemy path changes with this tower placement

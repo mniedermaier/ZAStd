@@ -41,6 +41,10 @@ export class Player {
   kills = 0;
   towersPlaced = 0;
   damageDealt = 0;
+  creepIncome = 0;
+
+  // Zone ability
+  zoneCooldownEnd = 0;
 
   constructor(playerId: string, name: string, slot: number) {
     this.playerId = playerId;
@@ -66,6 +70,8 @@ export class Player {
       ultimateUnlocked: this.ultimateUnlocked,
       abilityCooldownRemaining: Math.max(0, this.abilityCooldownEnd - now),
       abilityDamageBuffMult: now < this.abilityActiveUntil ? this.abilityDamageBuffMult : 1.0,
+      creepIncome: this.creepIncome > 0 ? this.creepIncome : undefined,
+      zoneCooldownRemaining: Math.max(0, this.zoneCooldownEnd - now) || undefined,
       bonuses: {
         damageMult: this.globalDamageMult,
         rangeMult: this.globalRangeMult,
