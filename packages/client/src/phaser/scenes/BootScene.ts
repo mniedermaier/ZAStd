@@ -51,25 +51,29 @@ export class BootScene extends Phaser.Scene {
     g.destroy();
   }
 
-  /** 256x256 transparent center → opaque black edges for screen-edge darkening */
+  /** 256x256 white center → dark edges for MULTIPLY screen-edge darkening */
   private generateVignetteRadial() {
     const size = 256;
-    const g = this.add.graphics();
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
     const cx = size / 2;
     const cy = size / 2;
     const maxR = size / 2;
-    const steps = 32;
-    // Draw from outside in: outer rings are more opaque black
-    for (let i = steps; i >= 1; i--) {
-      const r = (i / steps) * maxR;
-      const t = i / steps; // 0 at center, 1 at edge
-      // Only darken outer 40%
-      const alpha = t > 0.6 ? ((t - 0.6) / 0.4) * 0.8 : 0;
-      g.fillStyle(0x000000, alpha);
-      g.fillCircle(cx, cy, r);
-    }
-    g.generateTexture('vignette_radial', size, size);
-    g.destroy();
+
+    // White base (MULTIPLY with white = no effect)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+
+    // Radial gradient: transparent center → semi-transparent black at edges
+    const gradient = ctx.createRadialGradient(cx, cy, maxR * 0.6, cx, cy, maxR);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    this.textures.addCanvas('vignette_radial', canvas);
   }
 
   /** 128x128 large soft white circle for background atmosphere */
