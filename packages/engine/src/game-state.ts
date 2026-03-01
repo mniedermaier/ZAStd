@@ -152,7 +152,7 @@ export class GameState {
   }
 
   // Settings
-  updateSettings(opts: { mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean }): boolean {
+  updateSettings(opts: { mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean; modifiers?: string[] }): boolean {
     if (this.phase !== GamePhase.Lobby) return false;
     let needReinit = false;
     if (opts.mapSize !== undefined) {
@@ -176,6 +176,9 @@ export class GameState {
     }
     if (opts.moneySharing !== undefined) {
       this.moneySharing = opts.moneySharing;
+    }
+    if (opts.modifiers !== undefined) {
+      this.activeModifiers = opts.modifiers;
     }
     return true;
   }

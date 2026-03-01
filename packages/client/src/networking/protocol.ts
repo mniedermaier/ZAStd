@@ -9,7 +9,7 @@ export type ClientAction =
   | { type: 'buy_tech'; playerId: string; techId: string }
   | { type: 'select_governor'; playerId: string; governor: string }
   | { type: 'ready'; playerId: string; ready: boolean }
-  | { type: 'update_settings'; mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean }
+  | { type: 'update_settings'; mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean; modifiers?: string[] }
   | { type: 'join_request'; playerId: string; playerName: string; password?: string }
   | { type: 'chat'; playerId: string; playerName: string; text: string }
   | { type: 'use_ability'; playerId: string; targetX?: number; targetY?: number }

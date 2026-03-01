@@ -28,6 +28,7 @@ export interface RoomConfig {
   roomName: string;
   password?: string;
   mapSize?: string;
+  mapLayout?: string;
   difficulty?: string;
 }
 
@@ -67,8 +68,20 @@ export class RoomManager {
   // Reconnection state
   private reconnecting = false;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
+  private maxReconnectAttempts = 12;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Host-side disconnect grace timers (playerId → removal timer)
+  private disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly DISCONNECT_GRACE_MS = 45_000;
+
+  // Visibility / online lifecycle
+  private _isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  private _hiddenSince: number | null = null;
+  private _rejoinAttempted = false;
+  private _boundVisibilityHandler: (() => void) | null = null;
+  private _boundOnlineHandler: (() => void) | null = null;
+  private _boundOfflineHandler: (() => void) | null = null;
 
   constructor(
     playerId: string,
@@ -86,32 +99,47 @@ export class RoomManager {
 
   private _saveSession() {
     try {
-      sessionStorage.setItem('zastd:session', JSON.stringify({
+      localStorage.setItem('zastd:session', JSON.stringify({
         playerId: this.playerId,
         playerName: this.playerName,
         roomCode: this.roomCode,
         joinedAt: this.joinedAt,
         password: this.password,
+        savedAt: Date.now(),
       }));
     } catch {}
   }
 
   private _clearSession() {
-    try { sessionStorage.removeItem('zastd:session'); } catch {}
+    try { localStorage.removeItem('zastd:session'); } catch {}
   }
 
-  static getSavedSession(): { playerId: string; playerName: string; roomCode: string; joinedAt: number; password?: string } | null {
+  static getSavedSession(): { playerId: string; playerName: string; roomCode: string; joinedAt: number; password?: string; savedAt?: number } | null {
     try {
-      const raw = sessionStorage.getItem('zastd:session');
-      if (raw) return JSON.parse(raw);
+      const raw = localStorage.getItem('zastd:session');
+      if (raw) {
+        const session = JSON.parse(raw);
+        // Expire sessions older than 2 hours
+        if (session.savedAt && Date.now() - session.savedAt > 2 * 60 * 60 * 1000) {
+          localStorage.removeItem('zastd:session');
+          return null;
+        }
+        return session;
+      }
     } catch {}
     return null;
   }
 
   async attemptReconnect(): Promise<boolean> {
     if (this.reconnecting || !this.roomCode) return false;
+
+    // Don't start reconnecting while page is hidden — wait for visibility event
+    if (typeof document !== 'undefined' && document.hidden) return false;
+
     this.reconnecting = true;
     this.reconnectAttempts = 0;
+    this._rejoinAttempted = false;
+    useLobbyStore.getState().setReconnecting(true);
 
     const wasInGame = useLobbyStore.getState().inGame;
 
@@ -127,8 +155,20 @@ export class RoomManager {
 
     while (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 8000);
-      await new Promise(r => setTimeout(r, delay));
+      // Skip delay on first attempt when page is visible and online
+      const skipDelay = this.reconnectAttempts === 1 &&
+        typeof document !== 'undefined' && !document.hidden && navigator.onLine;
+      if (!skipDelay) {
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 15000);
+        await new Promise(r => setTimeout(r, delay));
+      }
+
+      // If page became hidden during backoff, pause reconnection
+      if (typeof document !== 'undefined' && document.hidden) {
+        this.reconnecting = false;
+        useLobbyStore.getState().setReconnecting(false);
+        return false; // Will be re-triggered by visibility listener
+      }
 
       try {
         this.realtime = new RealtimeManager(
@@ -157,6 +197,7 @@ export class RoomManager {
           }
           this.reconnecting = false;
           this.reconnectAttempts = 0;
+          useLobbyStore.getState().setReconnecting(false);
           useToastStore.getState().addToast('Reconnected!', 'success', 2000);
           return true;
         }
@@ -166,6 +207,7 @@ export class RoomManager {
     }
 
     this.reconnecting = false;
+    useLobbyStore.getState().setReconnecting(false);
     useToastStore.getState().addToast('Failed to reconnect. Please rejoin.', 'error', 5000);
     return false;
   }
@@ -179,8 +221,13 @@ export class RoomManager {
 
     // Create game state
     this.gameState = new GameState();
-    if (config.mapSize) this.gameState.updateSettings({ mapSize: config.mapSize });
-    if (config.difficulty) this.gameState.updateSettings({ difficulty: config.difficulty });
+    if (config.mapSize || config.mapLayout || config.difficulty) {
+      this.gameState.updateSettings({
+        mapSize: config.mapSize,
+        mapLayout: config.mapLayout,
+        difficulty: config.difficulty,
+      });
+    }
     this.gameState.addPlayer(this.playerId, this.playerName);
 
     // Set up host manager
@@ -233,6 +280,7 @@ export class RoomManager {
     useGameStore.getState().setSnapshot(this.gameState.serialize());
 
     this._saveSession();
+    this._setupLifecycleListeners();
     return this.roomCode;
   }
 
@@ -322,6 +370,7 @@ export class RoomManager {
 
     useLobbyStore.getState().setCurrentRoom(roomCode, false);
     this._saveSession();
+    this._setupLifecycleListeners();
   }
 
   // --- Actions (forwarded to host or processed locally) ---
@@ -349,6 +398,7 @@ export class RoomManager {
 
   startGame(): void {
     if (!this.gameState || !this.hostManager?.isHost) return;
+    this.gameState.applyModifiers();
     this.gameState.startGame();
     this.gameLoop = new GameLoop(this.gameState);
     this.stopLoop = this.gameLoop.start();
@@ -434,7 +484,7 @@ export class RoomManager {
     });
   }
 
-  updateSettings(settings: { mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean }): void {
+  updateSettings(settings: { mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean; modifiers?: string[] }): void {
     this._dispatchAction({
       type: 'update_settings',
       ...settings,
@@ -558,10 +608,14 @@ export class RoomManager {
   }
 
   async destroy(): Promise<void> {
+    this._teardownLifecycleListeners();
     this._stopHeartbeat();
     this._stopStaleWatchdog();
     this._stopLobbyBroadcast();
     this._stopGameBroadcast();
+    // Clear all disconnect grace timers
+    for (const timer of this.disconnectTimers.values()) clearTimeout(timer);
+    this.disconnectTimers.clear();
     this.stopLoop?.();
     this.gameLoop = null;
     this.gameState = null;
@@ -626,6 +680,14 @@ export class RoomManager {
             store.setAppPhase('game');
             store.setInGame(true);
             this._startStaleWatchdog();
+          }
+
+          // Auto-rejoin: if we're in-game but our player was removed during disconnect
+          if (store.inGame && !this._rejoinAttempted && !(this.playerId in broadcast.snapshot.players)) {
+            this._rejoinAttempted = true;
+            // Pick our last governor or default
+            const lastGov = Object.values(broadcast.snapshot.players)[0]?.governor || 'fire';
+            this.requestJoinGame(lastGov);
           }
         }
       } else if (msg.type === 'lobby_state') {
@@ -823,7 +885,7 @@ export class RoomManager {
         if (now - ts > this.ACCEPT_GRACE_MS) this.recentlyAccepted.delete(pid);
       }
 
-      // Mark disconnected players and remove them
+      // Mark disconnected players; start grace timer before removal
       for (const pid of gamePlayerIds) {
         if (!currentPlayerIds.has(pid)) {
           // Skip if player was recently accepted (still connecting)
@@ -831,11 +893,26 @@ export class RoomManager {
 
           const player = this.gameState.players.get(pid);
           if (player) player.connected = false;
-          this.gameState.transferTowers(pid);
-          this.gameState.removePlayer(pid);
+
+          // Start a grace timer if not already running
+          if (!this.disconnectTimers.has(pid)) {
+            const timer = setTimeout(() => {
+              this.disconnectTimers.delete(pid);
+              if (this.gameState?.players.has(pid)) {
+                this.gameState.transferTowers(pid);
+                this.gameState.removePlayer(pid);
+              }
+            }, this.DISCONNECT_GRACE_MS);
+            this.disconnectTimers.set(pid, timer);
+          }
         } else {
-          // Player is present — clear any grace period
+          // Player is present — cancel any pending removal and restore
           this.recentlyAccepted.delete(pid);
+          const pendingTimer = this.disconnectTimers.get(pid);
+          if (pendingTimer) {
+            clearTimeout(pendingTimer);
+            this.disconnectTimers.delete(pid);
+          }
           const player = this.gameState.players.get(pid);
           if (player) player.connected = true;
         }
@@ -980,6 +1057,9 @@ export class RoomManager {
     this._stopStaleWatchdog();
     this.lastStateReceived = Date.now();
     this.staleWatchdog = setInterval(() => {
+      // Don't trigger reconnect while page is hidden
+      if (typeof document !== 'undefined' && document.hidden) return;
+
       if (!this.hostManager?.isHost && this.lastStateReceived > 0) {
         const elapsed = Date.now() - this.lastStateReceived;
         if (elapsed > this.STALE_THRESHOLD_MS) {
@@ -1004,6 +1084,68 @@ export class RoomManager {
     if (!this.advertisement || !this.discovery) return;
     this.advertisement = { ...this.advertisement, ...partial };
     this.discovery.advertise(this.advertisement);
+  }
+
+  // --- Lifecycle Listeners ---
+
+  private _setupLifecycleListeners(): void {
+    this._teardownLifecycleListeners();
+
+    this._boundVisibilityHandler = () => {
+      if (document.hidden) {
+        // Page going hidden — pause watchdog, record timestamp
+        this._hiddenSince = Date.now();
+        this._stopStaleWatchdog();
+      } else {
+        // Page becoming visible again
+        const hiddenDuration = this._hiddenSince ? Date.now() - this._hiddenSince : 0;
+        this._hiddenSince = null;
+
+        // Reset stale timer to prevent instant stale trigger
+        this.lastStateReceived = Date.now();
+
+        if (hiddenDuration > 2000) {
+          // Was hidden for a meaningful time — proactively reconnect
+          this.attemptReconnect().then((ok) => {
+            if (ok && !this.hostManager?.isHost) this._startStaleWatchdog();
+          });
+        } else if (!this.hostManager?.isHost) {
+          // Short hide — just restart watchdog
+          this._startStaleWatchdog();
+        }
+      }
+    };
+
+    this._boundOnlineHandler = () => {
+      this._isOnline = true;
+      // Network restored — attempt reconnect
+      this.attemptReconnect().then((ok) => {
+        if (ok && !this.hostManager?.isHost) this._startStaleWatchdog();
+      });
+    };
+
+    this._boundOfflineHandler = () => {
+      this._isOnline = false;
+    };
+
+    document.addEventListener('visibilitychange', this._boundVisibilityHandler);
+    window.addEventListener('online', this._boundOnlineHandler);
+    window.addEventListener('offline', this._boundOfflineHandler);
+  }
+
+  private _teardownLifecycleListeners(): void {
+    if (this._boundVisibilityHandler) {
+      document.removeEventListener('visibilitychange', this._boundVisibilityHandler);
+      this._boundVisibilityHandler = null;
+    }
+    if (this._boundOnlineHandler) {
+      window.removeEventListener('online', this._boundOnlineHandler);
+      this._boundOnlineHandler = null;
+    }
+    if (this._boundOfflineHandler) {
+      window.removeEventListener('offline', this._boundOfflineHandler);
+      this._boundOfflineHandler = null;
+    }
   }
 
   // --- Getters ---

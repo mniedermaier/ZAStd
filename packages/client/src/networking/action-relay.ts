@@ -56,6 +56,7 @@ export function processAction(gameState: GameState, action: ClientAction): { suc
         mapLayout: action.mapLayout,
         difficulty: action.difficulty,
         moneySharing: action.moneySharing,
+        modifiers: action.modifiers,
       });
       return updated ? { success: true } : { success: false, message: 'Cannot update settings' };
     }

@@ -2,13 +2,14 @@ import { useState } from 'react';
 
 interface CreateRoomFormProps {
   onCancel: () => void;
-  onCreate: (config: { roomName: string; password?: string; mapSize: string; difficulty: string }) => void;
+  onCreate: (config: { roomName: string; password?: string; mapSize: string; difficulty: string; mapLayout?: string }) => void;
 }
 
 export function CreateRoomForm({ onCancel, onCreate }: CreateRoomFormProps) {
   const [roomName, setRoomName] = useState('');
   const [password, setPassword] = useState('');
   const [mapSize, setMapSize] = useState('medium');
+  const [mapLayout, setMapLayout] = useState('classic');
   const [difficulty, setDifficulty] = useState('normal');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -19,6 +20,7 @@ export function CreateRoomForm({ onCancel, onCreate }: CreateRoomFormProps) {
       password: password || undefined,
       mapSize,
       difficulty,
+      mapLayout,
     });
   };
 
@@ -78,6 +80,7 @@ export function CreateRoomForm({ onCancel, onCreate }: CreateRoomFormProps) {
               Map Size
             </label>
             <select value={mapSize} onChange={(e) => setMapSize(e.target.value)} style={{ width: '100%' }}>
+              <option value="tiny">Tiny</option>
               <option value="small">Small</option>
               <option value="medium">Medium</option>
               <option value="large">Large</option>
@@ -85,15 +88,27 @@ export function CreateRoomForm({ onCancel, onCreate }: CreateRoomFormProps) {
           </div>
           <div style={{ flex: 1 }}>
             <label style={{ fontSize: 11, color: '#8888aa', display: 'block', marginBottom: 4 }}>
-              Difficulty
+              Layout
             </label>
-            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} style={{ width: '100%' }}>
-              <option value="easy">Easy</option>
-              <option value="normal">Normal</option>
-              <option value="hard">Hard</option>
-              <option value="extreme">Extreme</option>
+            <select value={mapLayout} onChange={(e) => setMapLayout(e.target.value)} style={{ width: '100%' }}>
+              <option value="classic">Classic</option>
+              <option value="spiral">Spiral</option>
+              <option value="crossroads">Crossroads</option>
             </select>
           </div>
+        </div>
+
+        <div>
+          <label style={{ fontSize: 11, color: '#8888aa', display: 'block', marginBottom: 4 }}>
+            Difficulty
+          </label>
+          <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} style={{ width: '100%' }}>
+            <option value="easy">Easy</option>
+            <option value="normal">Normal</option>
+            <option value="hard">Hard</option>
+            <option value="extreme">Extreme</option>
+            <option value="endless">Endless</option>
+          </select>
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>

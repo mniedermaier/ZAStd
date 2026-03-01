@@ -276,6 +276,7 @@ function CreateRoomRouter() {
     password?: string;
     mapSize: string;
     difficulty: string;
+    mapLayout?: string;
   }) => {
     const { playerName, setLoading } = useLobbyStore.getState();
     const playerId = crypto.randomUUID();
@@ -286,6 +287,7 @@ function CreateRoomRouter() {
         roomName: config.roomName,
         password: config.password,
         mapSize: config.mapSize,
+        mapLayout: config.mapLayout,
         difficulty: config.difficulty,
       });
       (window as any).__roomManager = rm;
@@ -1507,6 +1509,7 @@ function MultiplayerMode() {
   const recordGameEnd = useStatsStore((s) => s.recordGameEnd);
 
   const [gameOver, setGameOver] = useState<{ victory: boolean; stats: Record<string, any>; waveReached?: number; livesRemaining?: number; difficulty?: string; mapSize?: string; playerCount?: number; newBadges?: Badge[] } | null>(null);
+  const [selectedModifiers, setSelectedModifiers] = useState<string[]>([]);
 
   const rm = (window as any).__roomManager as RoomManager | undefined;
   const playerId = ((window as any).__playerId as string) || 'unknown';
@@ -1536,8 +1539,13 @@ function MultiplayerMode() {
     rm?.startGame();
   }, [rm]);
 
-  const handleUpdateSettings = useCallback((settings: { mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean }) => {
+  const handleUpdateSettings = useCallback((settings: { mapSize?: string; mapLayout?: string; difficulty?: string; moneySharing?: boolean; modifiers?: string[] }) => {
     rm?.updateSettings(settings);
+  }, [rm]);
+
+  const handleUpdateModifiers = useCallback((modifiers: string[]) => {
+    setSelectedModifiers(modifiers);
+    rm?.updateSettings({ modifiers });
   }, [rm]);
 
   const handlePlaceTower = useCallback((data: { x: number; y: number; towerType: string }) => {
@@ -1712,6 +1720,10 @@ function MultiplayerMode() {
         isHost={isHost}
         roomCode={currentRoomCode ?? undefined}
         onLeave={handleLeave}
+        endlessMode={snapshot?.settings?.difficulty === 'endless'}
+        showModifiers={isHost}
+        selectedModifiers={snapshot?.activeModifiers ?? selectedModifiers}
+        onUpdateModifiers={handleUpdateModifiers}
       />
     );
   }
